@@ -5,6 +5,8 @@ use bevy::prelude::*;
 pub struct Collidable {
     width_half: f32,
     height_half: f32,
+    offset_x: f32,
+    offset_y: f32,
     left: f32,
     top: f32,
     right: f32,
@@ -12,22 +14,24 @@ pub struct Collidable {
 }
 
 impl Collidable {
-    pub fn new(x: f32, y: f32, width_half: f32, height_half: f32) -> Self {
+    pub fn new(x: f32, y: f32, width_half: f32, height_half: f32, offset_x: f32, offset_y: f32) -> Self {
         Self {
             width_half,
             height_half,
-            left: x - width_half,
-            right: x + width_half,
-            top: y + height_half,
-            bottom: y - height_half
+            offset_x,
+            offset_y,
+            left: x - width_half + offset_x,
+            right: x + width_half + offset_x,
+            top: y + height_half + offset_y,
+            bottom: y - height_half + offset_y
         }
     }
 
     pub fn update_center(&mut self, x: f32, y: f32) {
-        self.left = x - self.width_half;
-        self.right = x + self.width_half;
-        self.top = y + self.height_half;
-        self.bottom = y - self.height_half;
+        self.left = x - self.width_half + self.offset_x;
+        self.right = x + self.width_half + self.offset_x;
+        self.top = y + self.height_half + self.offset_y;
+        self.bottom = y - self.height_half + self.offset_y;
     }
 
     pub fn intersect(&self, other: &Collidable) -> bool {
