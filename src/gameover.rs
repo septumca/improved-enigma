@@ -18,9 +18,10 @@ impl Plugin for GameOverPlugin {
 
 fn input_gameover(
     keyboard_input: Res<Input<KeyCode>>,
+    touches: Res<Touches>,
     mut app_state: ResMut<NextState<GameState>>,
 ) {
-    if keyboard_input.just_pressed(KeyCode::R) {
+    if keyboard_input.just_pressed(KeyCode::R) || touches.any_just_pressed() {
         app_state.set(GameState::Playing);
     }
 }
@@ -38,7 +39,7 @@ fn setup_gameover(
 
     commands.spawn((
         TextBundle::from_section(
-            "Game Over\n\n\n\n\nPress R to try again!",
+            "Game Over\n\n\n\n\nPress R\nor touch the screen\nto try again!",
             text_style.clone(),
         )
         .with_text_alignment(text_alignment)

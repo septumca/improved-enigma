@@ -18,4 +18,5 @@ opt-level = 1
 [profile.dev.package."*"]
 opt-level = 3
 
-# wasm-bindgen --out-dir ./web_dist/ --target web ./target/
+# cargo build --target wasm32-unknown-unknown --release
+# wasm-bindgen --out-dir ./web_dist/ --target web ./target/wasm32-unknown-unknown/release/onewalker.wasm

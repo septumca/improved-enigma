@@ -1,4 +1,4 @@
-use std::{f32::consts::{FRAC_PI_2, FRAC_PI_8, FRAC_PI_4}};
+use std::{f32::consts::{FRAC_PI_2, FRAC_PI_8, FRAC_PI_4, PI}};
 use bevy::{prelude::*, math::vec2};
 
 use crate::{GameResources, Alive, GameState, collidable::Collidable, despawn, debug::{DebugMarker}, SCALE_FACTOR};
@@ -12,6 +12,7 @@ pub const FALL_TIMEOUT: f32 = 0.3;
 const SIDES_MAX_INDEX: usize = 3;
 const TURN_ANGLES: [f32; 4] = [FRAC_PI_8, FRAC_PI_4, FRAC_PI_8 * 3.0, FRAC_PI_2];
 pub const PLAYER_Z_INDEX: f32 = 2.0;
+const PLAYER_CAMERA_OFFSET: f32 = 128.0;
 
 #[derive(Debug, Component)]
 pub enum Direction {
@@ -20,7 +21,65 @@ pub enum Direction {
     Right(usize)
 }
 
+enum SteerDirection {
+    Left,
+    Right
+}
+
 impl Direction {
+    pub fn from_angle(angle: f32) -> Self {
+        let treshold = FRAC_PI_8 / 2.0;
+        let is_right_side = angle > 0.0 && angle < PI;
+        let angle = angle.abs();
+        if angle <= treshold {
+            return Self::Down;
+        }
+        let mut side_index = SIDES_MAX_INDEX;
+        if angle > treshold && angle <= treshold * 3.0 {
+            side_index = 0;
+        }
+        if angle > treshold * 3.0 && angle <= treshold * 5.0 {
+            side_index = 1;
+        }
+        if angle > treshold * 5.0 && angle <= treshold * 7.0 {
+            side_index = 2;
+        }
+        match is_right_side {
+            true => Self::Right(side_index),
+            false => Self::Left(side_index)
+        }
+    }
+
+    fn steering_direction(&self, target: &Self) -> Option<SteerDirection> {
+        match (self, target) {
+            (Self::Down, Self::Down) => None,
+            (Self::Down, Self::Left(_)) => Some(SteerDirection::Left),
+            (Self::Down, Self::Right(_)) => Some(SteerDirection::Right),
+            (Self::Left(_), Self::Down) => Some(SteerDirection::Right),
+            (Self::Right(_), Self::Down) => Some(SteerDirection::Left),
+            (Self::Right(_x), Self::Left(_y)) => Some(SteerDirection::Left),
+            (Self::Left(_x), Self::Right(_y)) => Some(SteerDirection::Right),
+            (Self::Left(x), Self::Left(y)) => {
+                if x == y {
+                    None
+                } else if x > y {
+                    Some(SteerDirection::Right)
+                } else {
+                    Some(SteerDirection::Left)
+                }
+            },
+            (Self::Right(x), Self::Right(y)) => {
+                if x == y {
+                    None
+                } else if x > y {
+                    Some(SteerDirection::Left)
+                } else {
+                    Some(SteerDirection::Right)
+                }
+            },
+        }
+    }
+
     pub fn steer_left(&self) -> Self {
         match self {
             Self::Left(x) if x == &SIDES_MAX_INDEX => Self::Left(SIDES_MAX_INDEX),
@@ -132,8 +191,10 @@ impl Plugin for PlayerPlugin {
             )
             .add_systems(
                 (
-                    input,
-                    update_player.after(input),
+                    keyboard_input,
+                    mouse_input,
+                    touch_input,
+                    update_player.after(keyboard_input),
                     gameover_detection.after(update_player),
                     update_score_text,
                 ).in_set(OnUpdate(GameState::Playing))
@@ -142,7 +203,7 @@ impl Plugin for PlayerPlugin {
 }
 
 
-fn input(
+fn keyboard_input(
     keyboard_input: Res<Input<KeyCode>>,
     game_resources: Res<GameResources>,
     mut player_q: Query<(&mut Sprite, &mut Direction, &mut Player), With<Alive>>
@@ -168,6 +229,114 @@ fn input(
         sprite.rect = Some(sprite_rect);
         sprite.flip_x = flip_x;
     }
+}
+
+fn steer_to_position(
+    position: Vec2,
+    game_resources: &GameResources,
+    player_transform: &Transform,
+    direction: &mut Direction,
+    player: &mut Player,
+    sprite: &mut Sprite,
+) {
+    let delta_v = position - player_transform.translation.truncate();
+    let angle = delta_v.y.atan2(delta_v.x) + FRAC_PI_2;
+    let target_direction = Direction::from_angle(angle);
+    let Some(steer_direction) = direction.steering_direction(&target_direction) else {
+        return;
+    };
+
+    match steer_direction {
+        SteerDirection::Left => *direction = direction.steer_left(),
+        SteerDirection::Right => *direction = direction.steer_right(),
+    };
+
+    player.turn_rate.reset();
+    let (sprite_rect, flip_x) = direction.get_graphics(&game_resources);
+    sprite.rect = Some(sprite_rect);
+    sprite.flip_x = flip_x;
+}
+
+fn mouse_input(
+    mouse_button_input: Res<Input<MouseButton>>,
+    window: Query<&Window>,
+    camera_q: Query<(&Camera, &GlobalTransform)>,
+    game_resources: Res<GameResources>,
+    mut player_q: Query<(&Transform, &mut Sprite, &mut Direction, &mut Player), (With<Alive>, Without<Camera>)>
+) {
+    let Ok((player_transform, mut sprite, mut direction, mut player)) = player_q.get_single_mut() else {
+        return;
+    };
+    let Ok(window) = window.get_single() else {
+        return;
+    };
+    let Ok((camera, camera_transform)) = camera_q.get_single() else {
+        return;
+    };
+    if !player.turn_rate.finished() {
+        return;
+    }
+
+    if mouse_button_input.pressed(MouseButton::Left) {
+        let Some(mouse_position) = window.cursor_position()
+            .and_then(|cursor| camera.viewport_to_world(camera_transform, cursor))
+            .map(|ray| ray.origin.truncate()) else
+        {
+            return;
+        };
+
+        steer_to_position(
+            mouse_position,
+            &game_resources,
+            player_transform,
+            &mut direction,
+            &mut player,
+            &mut sprite
+        );
+    }
+}
+
+fn touch_input(
+    touches: Res<Touches>,
+    window: Query<&Window>,
+    camera_q: Query<(&Camera, &GlobalTransform)>,
+    game_resources: Res<GameResources>,
+    mut player_q: Query<(&Transform, &mut Sprite, &mut Direction, &mut Player), (With<Alive>, Without<Camera>)>
+) {
+    let Ok((player_transform, mut sprite, mut direction, mut player)) = player_q.get_single_mut() else {
+        return;
+    };
+    let Ok(window) = window.get_single() else {
+        return;
+    };
+    let Ok((camera, camera_transform)) = camera_q.get_single() else {
+        return;
+    };
+    if !player.turn_rate.finished() {
+        return;
+    }
+
+    let Some(touch) = touches.first_pressed_position() else {
+        return;
+    };
+    let touch_position = vec2(touch.x, window.height() - touch.y);
+    let Some(touch_position) = camera
+        .viewport_to_world(
+            camera_transform,
+            touch_position
+        )
+        .map(|ray| ray.origin.truncate()) else
+    {
+        return;
+    };
+    steer_to_position(
+        touch_position,
+        &game_resources,
+        player_transform,
+        &mut direction,
+        &mut player,
+        &mut sprite
+    );
 }
 
 fn update_player(
@@ -199,7 +368,7 @@ fn update_player(
         return;
     };
     camera_transform.translation.x = player_transform.translation.x;
-    camera_transform.translation.y = player_transform.translation.y;
+    camera_transform.translation.y = player_transform.translation.y - PLAYER_CAMERA_OFFSET;
 }
 
 fn update_score_text(
@@ -233,7 +402,6 @@ pub fn setup(
     mut commands: Commands,
     game_resources: Res<GameResources>,
 ) {
-    println!("NEW PLAYER SETUP");
     let text_style = TextStyle {
         font: game_resources.font_handle.clone(),
         font_size: 24.0,

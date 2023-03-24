@@ -28,7 +28,7 @@ fn setup(
 
     commands.spawn((
         Text2dBundle {
-            text: Text::from_section("Use W and D to turn", text_style.clone()).with_alignment(text_alignment),
+            text: Text::from_section("Use A and D\nmouse click\nor touch\nto turn", text_style.clone()).with_alignment(text_alignment),
             transform: Transform::from_xyz(0., -250., 0.5),
             ..default()
         },

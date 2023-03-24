@@ -39,7 +39,7 @@ TODO
     2. spawnovat obstacles v ramci gridu s random offsetom
     3. podobne aj s posts, vzdialenost bude v ramci policok
      (resp. sa vie vypocitat do ktorych policok spadaju posty a tam sa nevyspawnuje ziadna obstacle)
-- pridat touch a mouse podporu
+- na mobile nefunguje touch - na lepsie debugovanie asi pozriet https://itch.io/docs/butler/
 - yeti
  */
 
@@ -52,8 +52,8 @@ pub const SCALE_FACTOR: f32 = 4.0;
 #[derive(Clone, Copy, Default, Eq, PartialEq, Debug, Hash, States)]
 pub enum GameState {
     #[default]
-    MainMenu,
     Playing,
+    MainMenu,
     GameOver,
 }
 
