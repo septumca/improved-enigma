@@ -11,7 +11,7 @@ const PLAYER_COLLIDABLE_OFFSETS: (f32, f32) = (0.0 * SCALE_FACTOR, -2.0 * SCALE_
 pub const FALL_TIMEOUT: f32 = 0.3;
 const SIDES_MAX_INDEX: usize = 3;
 const TURN_ANGLES: [f32; 4] = [FRAC_PI_8, FRAC_PI_4, FRAC_PI_8 * 3.0, FRAC_PI_2];
-
+pub const PLAYER_Z_INDEX: f32 = 2.0;
 
 #[derive(Debug, Component)]
 pub enum Direction {
@@ -21,7 +21,7 @@ pub enum Direction {
 }
 
 impl Direction {
-    fn steer_left(&self) -> Self {
+    pub fn steer_left(&self) -> Self {
         match self {
             Self::Left(x) if x == &SIDES_MAX_INDEX => Self::Left(SIDES_MAX_INDEX),
             Self::Left(x) => Self::Left(x+1),
@@ -31,13 +31,40 @@ impl Direction {
         }
     }
 
-    fn steer_right(&self) -> Self {
+    pub fn steer_right(&self) -> Self {
         match self {
             Self::Right(x) if x == &SIDES_MAX_INDEX => Self::Right(SIDES_MAX_INDEX),
             Self::Right(x) => Self::Right(x+1),
             Self::Down => Self::Right(0),
             Self::Left(0) => Self::Down,
             Self::Left(x) => Self::Left(x-1),
+        }
+    }
+
+    pub fn get_standing_position_offset(&self) -> Vec<(f32, f32)> {
+        match self {
+            Self::Down | Self::Right(0) | Self::Left(0) => vec![(-2.* SCALE_FACTOR, -1.* SCALE_FACTOR), (2.* SCALE_FACTOR, -1.* SCALE_FACTOR)],
+            Self::Right(1) | Self::Left(1) => vec![(-2.* SCALE_FACTOR, -2.* SCALE_FACTOR), (2.* SCALE_FACTOR, -2.* SCALE_FACTOR)],
+            Self::Right(2) | Self::Left(2) => vec![(-2.* SCALE_FACTOR, -3.* SCALE_FACTOR), (2.* SCALE_FACTOR, -3.* SCALE_FACTOR)],
+            Self::Right(3) => vec![(-2.* SCALE_FACTOR, -4.* SCALE_FACTOR), (2.* SCALE_FACTOR, -3.* SCALE_FACTOR)],
+            Self::Left(3) => vec![(-2.* SCALE_FACTOR, -3.* SCALE_FACTOR), (2.* SCALE_FACTOR, -4.* SCALE_FACTOR)],
+            _ => vec![]
+        }
+    }
+
+    pub fn get_graphics(&self, game_resources: &GameResources) -> (Rect, bool) {
+        match self {
+            Self::Down =>(game_resources.down, false),
+            Self::Left(x) => (game_resources.sides[*x], true),
+            Self::Right(x) => (game_resources.sides[*x], false),
+        }
+    }
+
+    pub fn get_move_data(&self, speed_modifiers: &SpeedModifiers) -> (f32, f32) {
+        match self {
+            Self::Down => (0.0, speed_modifiers.down),
+            Self::Left(x) => (-TURN_ANGLES[*x], speed_modifiers.side[*x]),
+            Self::Right(x) => (TURN_ANGLES[*x], speed_modifiers.side[*x]),
         }
     }
 }
@@ -51,6 +78,20 @@ struct Speed(f32);
 pub struct SpeedModifiers {
     down: f32,
     side: Vec<f32>,
+}
+
+#[derive(Component)]
+pub struct Score {
+    value: f32
+}
+
+impl Score {
+    pub fn increase(&mut self) {
+        self.value = self.value + 10.0;
+    }
+    pub fn decrease(&mut self) {
+        self.value = self.value - 10.0;
+    }
 }
 
 #[derive(Component)]
@@ -94,6 +135,7 @@ impl Plugin for PlayerPlugin {
                     input,
                     update_player.after(input),
                     gameover_detection.after(update_player),
+                    update_score_text,
                 ).in_set(OnUpdate(GameState::Playing))
             );
     }
@@ -102,7 +144,7 @@ impl Plugin for PlayerPlugin {
 
 fn input(
     keyboard_input: Res<Input<KeyCode>>,
-    sprite_rects: Res<GameResources>,
+    game_resources: Res<GameResources>,
     mut player_q: Query<(&mut Sprite, &mut Direction, &mut Player), With<Alive>>
 ) {
     let Ok((mut sprite, mut direction, mut player)) = player_q.get_single_mut() else {
@@ -122,20 +164,9 @@ fn input(
 
     if key_pressed {
         player.turn_rate.reset();
-        match *direction {
-            Direction::Down => {
-                sprite.rect = Some(sprite_rects.down);
-                sprite.flip_x = false;
-            },
-            Direction::Left(x) => {
-                sprite.rect = Some(sprite_rects.sides[x]);
-                sprite.flip_x = true;
-            },
-            Direction::Right(x) => {
-                sprite.rect = Some(sprite_rects.sides[x]);
-                sprite.flip_x = false;
-            }
-        };
+        let (sprite_rect, flip_x) = direction.get_graphics(&game_resources);
+        sprite.rect = Some(sprite_rect);
+        sprite.flip_x = flip_x;
     }
 }
 
@@ -156,11 +187,7 @@ fn update_player(
     let dt = timer.delta();
     player.turn_rate.tick(dt);
 
-    let (deg_rad, speed_modifier) = match direction {
-        Direction::Down => (0.0, speed_modifiers.down),
-        Direction::Left(x) => (-TURN_ANGLES[*x], speed_modifiers.side[*x]),
-        Direction::Right(x) => (TURN_ANGLES[*x], speed_modifiers.side[*x]),
-    };
+    let (deg_rad, speed_modifier) = direction.get_move_data(&speed_modifiers);
     let deg_rad = deg_rad - FRAC_PI_2; //0 degrees is pointing down (e.g. [0, -1], not to [1, 0])
     let dx = deg_rad.cos() * speed.0 * speed_modifier;
     let dy = deg_rad.sin() * speed.0 * speed_modifier;
@@ -173,6 +200,20 @@ fn update_player(
     };
     camera_transform.translation.x = player_transform.translation.x;
     camera_transform.translation.y = player_transform.translation.y;
+}
+
+fn update_score_text(
+    player_q: Query<&Score, With<Player>>,
+    mut text_q: Query<&mut Text, With<ScoreText>>,
+) {
+    let Ok(score) = player_q.get_single() else {
+        return;
+    };
+    let Ok(mut text) = text_q.get_single_mut() else {
+        return;
+    };
+
+    text.sections[0].value = format!("Score: {:.0}", score.value);
 }
 
 fn gameover_detection(
@@ -192,15 +233,9 @@ pub fn setup(
     mut commands: Commands,
     game_resources: Res<GameResources>,
 ) {
-    let Some(font_handle) = &game_resources.font_handle else {
-        return;
-    };
-    let Some(image_handle) = &game_resources.image_handle else {
-        return;
-    };
-
+    println!("NEW PLAYER SETUP");
     let text_style = TextStyle {
-        font: font_handle.clone(),
+        font: game_resources.font_handle.clone(),
         font_size: 24.0,
         color: Color::BLACK,
     };
@@ -213,8 +248,8 @@ pub fn setup(
                 rect: Some(game_resources.down),
                 ..default()
             },
-            texture: image_handle.clone(),
-            transform: Transform::from_xyz(0., 0., 2.),
+            texture: game_resources.image_handle.clone(),
+            transform: Transform::from_xyz(0., 0., PLAYER_Z_INDEX),
             ..default()
         },
         Player::new(TURN_RATE),
@@ -229,7 +264,8 @@ pub fn setup(
             down: 1.0,
             side: vec![0.85, 0.75, 0.6, 0.4]
         },
-        Direction::Down
+        Direction::Down,
+        Score { value: 0.0 }
     ))
     .with_children(|parent| {
         parent.spawn((

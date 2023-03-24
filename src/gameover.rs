@@ -29,12 +29,8 @@ fn setup_gameover(
     mut commands: Commands,
     game_resources: Res<GameResources>,
 ) {
-    let Some(font_handle) = &game_resources.font_handle else {
-        return;
-    };
-
     let text_style = TextStyle {
-        font: font_handle.clone(),
+        font: game_resources.font_handle.clone(),
         font_size: 24.0,
         color: Color::BLACK,
     };

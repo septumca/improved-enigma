@@ -46,12 +46,8 @@ fn setup(
     mut commands: Commands,
     game_resources: Res<GameResources>,
 ) {
-    let Some(font_handle) = &game_resources.font_handle else {
-        return;
-    };
-
     let text_style = TextStyle {
-        font: font_handle.clone(),
+        font: game_resources.font_handle.clone(),
         font_size: 36.0,
         color: Color::BLACK,
     };
@@ -61,28 +57,66 @@ fn setup(
     commands.spawn(MainMenuItems(items.clone()));
     commands.spawn(SelectedItemIndex(0));
 
-    for (index, item ) in items.iter().enumerate() {
-        commands.spawn((
-            TextBundle::from_section(
-                item.to_string(),
-                text_style.clone(),
-            )
-            .with_text_alignment(text_alignment)
-            .with_style(Style {
-                position: UiRect {
-                    top: Val::Px(40.0 * index as f32 * 120.0),
-                    ..default()
+    commands
+        .spawn((
+            NodeBundle {
+                style: Style {
+                    size: Size::all(Val::Percent(100.)),
+                    flex_direction: FlexDirection::Column,
+                    align_items: AlignItems::Center,
+                    ..Default::default()
                 },
-                margin: UiRect {
-                    left: Val::Auto,
-                    right: Val::Auto,
-                    ..default()
-                },
-                ..default()
-            }),
+                ..Default::default()
+            },
             MenuText
-        ));
-    }
+        ))
+        .with_children(|parent| {
+            for (index, item ) in items.iter().enumerate() {
+                parent.spawn((
+                    TextBundle::from_section(
+                        item.to_string(),
+                        text_style.clone(),
+                    )
+                    .with_text_alignment(text_alignment)
+                    .with_style(Style {
+                        position: UiRect {
+                            top: Val::Px(40.0 * index as f32 + 120.0),
+                            ..default()
+                        },
+                        margin: UiRect {
+                            left: Val::Auto,
+                            right: Val::Auto,
+                            ..default()
+                        },
+                        ..default()
+                    }),
+                ));
+            }
+
+            parent.spawn((
+                TextBundle::from_section(
+                    "Press M to toggle music",
+                    TextStyle {
+                        font: game_resources.font_handle.clone(),
+                        font_size: 24.0,
+                        color: Color::BLACK,
+                    },
+                )
+                .with_text_alignment(text_alignment)
+                .with_style(Style {
+                    position: UiRect {
+                        top: Val::Px(300.0),
+                        ..default()
+                    },
+                    margin: UiRect {
+                        left: Val::Auto,
+                        right: Val::Auto,
+                        ..default()
+                    },
+                    ..default()
+                }),
+            ));
+        });
 }
 
 fn input(

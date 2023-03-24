@@ -7,7 +7,7 @@ use debug::DebugPlugin;
 use gameover::GameOverPlugin;
 use menu::MenuPlugin;
 use obstacle::ObstaclePlugin;
-use player::{PlayerPlugin, Player};
+use player::{PlayerPlugin};
 use posts::PostsPlugin;
 use trail::TrailPlugin;
 use tutorial::TutorialPlugin;
@@ -23,14 +23,28 @@ pub mod trail;
 pub mod posts;
 /*
 TODO
-- cely obstacle spawner nech je ako iterator a nech sa initialuzuje v setup funkcii po player::setup
-- upravit Z indexy
+- upravit zatacanie
+    1. encapsulnut direction - aby enumy neleakovaly
+    2. prerobit enumy na rotation f32
+    3. extrahovat lyze do samostatnych obrazkov a child componentov
+    4. na zaklade rotacie nastavit rotaciu lyzi a ich vzdialenost od seba
+- upravit pohyb
+    1. pre urcitu direction (po novom rotation) bude stanovena
+         maximalna rychlost
+         akceleracia
+         deakceleracia
+    2. pri zmene rotacie sa postupne (de)akceleruje na maximalnu rychlost
+- upravit spawnovanie
+    1. rozdelit priestor do vacsich gridov (e.g. 24x24)
+    2. spawnovat obstacles v ramci gridu s random offsetom
+    3. podobne aj s posts, vzdialenost bude v ramci policok
+     (resp. sa vie vypocitat do ktorych policok spadaju posty a tam sa nevyspawnuje ziadna obstacle)
 - pridat touch a mouse podporu
-- Zimplementovat a nakreslit yetiho
+- yeti
  */
 
-pub const SCREEN_WIDTH: f32 = 640.0;
-pub const SCREEN_HEIGHT: f32 = 640.0;
+const SCREEN_WIDTH: f32 = 640.0;
+const SCREEN_HEIGHT: f32 = 480.0;
 pub const SPRITE_SIZE: f32 = 12.0;
 pub const SCALE_FACTOR: f32 = 4.0;
 
@@ -46,7 +60,6 @@ pub enum GameState {
 fn main() {
     let mut app = App::new();
     app
-        .insert_resource(GameResources::new())
         .insert_resource(ClearColor(Color::rgb(0.95, 0.95, 1.0)))
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
@@ -58,6 +71,7 @@ fn main() {
         }).set(ImagePlugin::default_nearest()))
         .add_state::<GameState>()
         .add_startup_system(setup)
+        .add_system(music_input)
         .add_plugin(TutorialPlugin)
         .add_plugin(MenuPlugin)
         .add_plugin(PlayerPlugin)
@@ -82,8 +96,9 @@ pub struct Alive;
 
 #[derive(Resource)]
 pub struct GameResources {
-    image_handle: Option<Handle<Image>>,
-    font_handle: Option<Handle<Font>>,
+    music_controller: Handle<AudioSink>,
+    image_handle: Handle<Image>,
+    font_handle: Handle<Font>,
     sprite_size: f32,
     down: Rect,
     sides: Vec<Rect>,
@@ -94,57 +109,67 @@ pub struct GameResources {
     blue_post: Rect,
 }
 
-impl GameResources {
-    pub fn new() -> Self {
-        Self {
-            image_handle: None,
-            font_handle: None,
-            sprite_size: SPRITE_SIZE * SCALE_FACTOR,
-            down: Rect::new(0. * SPRITE_SIZE, 0., 1. * SPRITE_SIZE, SPRITE_SIZE),
-            sides: vec![
-                Rect::new(1. * SPRITE_SIZE, 0., 2. * SPRITE_SIZE, SPRITE_SIZE),
-                Rect::new(2. * SPRITE_SIZE, 0., 3. * SPRITE_SIZE, SPRITE_SIZE),
-                Rect::new(3. * SPRITE_SIZE, 0., 4. * SPRITE_SIZE, SPRITE_SIZE),
-                Rect::new(4. * SPRITE_SIZE, 0., 5. * SPRITE_SIZE, SPRITE_SIZE),
-            ],
-            fall_down: Rect::new(5. * SPRITE_SIZE, 0., 6. * SPRITE_SIZE, SPRITE_SIZE),
-            tree: Rect::new(6. * SPRITE_SIZE, 0., 7. * SPRITE_SIZE, SPRITE_SIZE),
-            stone: Rect::new(7. * SPRITE_SIZE, 0., 8. * SPRITE_SIZE, SPRITE_SIZE),
-            red_post: Rect::new(8. * SPRITE_SIZE, 0., 9. * SPRITE_SIZE, SPRITE_SIZE),
-            blue_post: Rect::new(9. * SPRITE_SIZE, 0., 10. * SPRITE_SIZE, SPRITE_SIZE),
+fn setup(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    audio: Res<Audio>,
+    audio_sinks: Res<Assets<AudioSink>>
+) {
+    let image_handle = asset_server.load("spritesheet.png");
+    let font_handle = asset_server.load("QuinqueFive.ttf");
+    let music = asset_server.load("snow_globe_-_expanded.ogg");
+    let music_controller = audio_sinks.get_handle(audio.play_with_settings(
+        music,
+        PlaybackSettings::LOOP.with_volume(0.25),
+    ));
+    let game_resource = GameResources {
+        image_handle,
+        font_handle,
+        music_controller,
+        sprite_size: SPRITE_SIZE * SCALE_FACTOR,
+        down: Rect::new(0. * SPRITE_SIZE, 0., 1. * SPRITE_SIZE, SPRITE_SIZE),
+        sides: vec![
+            Rect::new(1. * SPRITE_SIZE, 0., 2. * SPRITE_SIZE, SPRITE_SIZE),
+            Rect::new(2. * SPRITE_SIZE, 0., 3. * SPRITE_SIZE, SPRITE_SIZE),
+            Rect::new(3. * SPRITE_SIZE, 0., 4. * SPRITE_SIZE, SPRITE_SIZE),
+            Rect::new(4. * SPRITE_SIZE, 0., 5. * SPRITE_SIZE, SPRITE_SIZE),
+        ],
+        fall_down: Rect::new(5. * SPRITE_SIZE, 0., 6. * SPRITE_SIZE, SPRITE_SIZE),
+        tree: Rect::new(6. * SPRITE_SIZE, 0., 7. * SPRITE_SIZE, SPRITE_SIZE),
+        stone: Rect::new(7. * SPRITE_SIZE, 0., 8. * SPRITE_SIZE, SPRITE_SIZE),
+        red_post: Rect::new(8. * SPRITE_SIZE, 0., 9. * SPRITE_SIZE, SPRITE_SIZE),
+        blue_post: Rect::new(9. * SPRITE_SIZE, 0., 10. * SPRITE_SIZE, SPRITE_SIZE),
+    };
+
+    commands.insert_resource(game_resource);
+    commands.spawn(Camera2dBundle::default());
+}
+
+fn music_input(
+    keyboard_input: Res<Input<KeyCode>>,
+    audio_sinks: Res<Assets<AudioSink>>,
+    game_resource: Res<GameResources>,
+) {
+    if keyboard_input.just_pressed(KeyCode::M) {
+        if let Some(sink) = audio_sinks.get(&game_resource.music_controller) {
+            sink.toggle();
         }
     }
 }
 
-fn setup(
-    mut commands: Commands,
-    mut game_resources: ResMut<GameResources>,
-    asset_server: Res<AssetServer>,
-    audio: Res<Audio>
-) {
-    let texture_handle = asset_server.load("spritesheet.png");
-    let font = asset_server.load("QuinqueFive.ttf");
-    let music = asset_server.load("snow_globe_-_expanded.ogg");
-    game_resources.image_handle = Some(texture_handle.clone());
-    game_resources.font_handle = Some(font.clone());
-
-    audio.play_with_settings(
-        music,
-        PlaybackSettings::LOOP.with_volume(0.25),
-    );
-    commands.spawn(Camera2dBundle::default());
-}
-
-
 fn cleanup<T: Component>(
     mut commands: Commands,
+    window: Query<&Window>,
     camera_q: Query<&Transform, With<Camera>>,
     t_q: Query<(Entity, &Transform), With<T>>
 ) {
     let Ok(transform_camera) = camera_q.get_single() else {
         return;
     };
-    let offset = SCREEN_HEIGHT * 0.6;
+    let Ok(window) = window.get_single() else {
+        return;
+    };
+    let offset = window.height() * 0.6;
 
     for (entity, transform_t) in t_q.iter() {
         if transform_camera.translation.y + offset < transform_t.translation.y {

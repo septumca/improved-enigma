@@ -1,16 +1,31 @@
 use bevy::{prelude::*, math::vec2, utils::HashSet};
 use rand::{self, Rng, seq::SliceRandom};
 
-use crate::{collidable::Collidable, Alive, GameState, SCREEN_HEIGHT, SCALE_FACTOR, GameResources, player::{Player, Slowdown, FALL_TIMEOUT}, cleanup, despawn, SCREEN_WIDTH, debug::DebugMarker, SPRITE_SIZE};
+use crate::{
+    collidable::Collidable,
+    Alive,
+    GameState,
+    SCALE_FACTOR,
+    GameResources,
+    player::{
+        Player,
+        Slowdown,
+        FALL_TIMEOUT,
+        PLAYER_Z_INDEX
+    },
+    cleanup,
+    despawn,
+    debug::DebugMarker,
+    SPRITE_SIZE
+};
 
 const TREE_COLLIDABLE_DIMENSIONS: (f32, f32) = (2.0 * SCALE_FACTOR, 2.0 * SCALE_FACTOR);
 const TREE_COLLIDABLE_OFFSETS: (f32, f32) = (0.0 * SCALE_FACTOR, -2.0 * SCALE_FACTOR);
 const STONE_COLLIDABLE_DIMENSIONS: (f32, f32) = (3.0 * SCALE_FACTOR, 2.0 * SCALE_FACTOR);
 const STONE_COLLIDABLE_OFFSETS: (f32, f32) = (0.0 * SCALE_FACTOR, -1.0 * SCALE_FACTOR);
 const REGION_OFFSETS: [(isize, isize); 5] = [(-1, 0), (-1, -1), (0, -1), (1, -1), (1, 0)];
-const REGION_WIDTH: f32 = SCREEN_WIDTH;
-const REGION_HEIGHT: f32 = SCREEN_HEIGHT;
 const GAP_RANGE: (f32, f32) = (SPRITE_SIZE * SCALE_FACTOR * 1.0, SPRITE_SIZE * SCALE_FACTOR * 5.0);
+
 
 #[derive(Clone)]
 enum ObstacleType {
@@ -19,16 +34,20 @@ enum ObstacleType {
 }
 
 struct XYFillSpawner {
+    region_width: f32,
+    region_height: f32,
     current_filled_x: f32,
     current_filled_y: f32,
     y_gap: f32,
 }
 
-fn xy_walk_spawner() -> XYFillSpawner {
+fn xy_walk_spawner(region_width: f32, region_height: f32) -> XYFillSpawner {
     let mut rng = rand::thread_rng();
     let y_gap = rng.gen_range(GAP_RANGE.0..GAP_RANGE.1);
     let current_filled_y = y_gap * 2.0;
     XYFillSpawner {
+        region_width,
+        region_height,
         current_filled_x: rng.gen_range(GAP_RANGE.0..GAP_RANGE.1),
         current_filled_y,
         y_gap,
@@ -39,7 +58,7 @@ impl Iterator for XYFillSpawner {
     type Item = (ObstacleType, f32, f32);
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.current_filled_y > REGION_HEIGHT {
+        if self.current_filled_y > self.region_height {
             return None;
         }
         let mut rng = rand::thread_rng();
@@ -49,7 +68,7 @@ impl Iterator for XYFillSpawner {
         };
 
         let data = (obstacle_type.clone(), self.current_filled_x, self.current_filled_y + rng.gen_range(-self.y_gap * 0.75..self.y_gap * 0.75));
-        if self.current_filled_x + GAP_RANGE.1 > REGION_WIDTH {
+        if self.current_filled_x + GAP_RANGE.1 > self.region_width {
             self.current_filled_x = rng.gen_range(GAP_RANGE.0..GAP_RANGE.1);
             self.y_gap = rng.gen_range(GAP_RANGE.0..GAP_RANGE.1);
             self.current_filled_y = self.current_filled_y + self.y_gap;
@@ -99,18 +118,21 @@ impl Plugin for ObstaclePlugin {
 
 fn spawn_obstales(
     mut commands: Commands,
+    window: Query<&Window>,
     game_resources: Res<GameResources>,
     camera_q: Query<&Transform, With<Camera>>,
     mut spawner_r: ResMut<ObstacleSpawner>,
 ) {
+    let Ok(window) = window.get_single() else {
+        return;
+    };
     let Ok(transform) = camera_q.get_single() else {
         return;
     };
-    let Some(texture_handle) = &game_resources.image_handle else {
-        return;
-    };
-    let camera_region_x = ((transform.translation.x + REGION_WIDTH / 2.0) / REGION_WIDTH).floor() as isize;
-    let camera_region_y = (transform.translation.y / REGION_HEIGHT).floor() as isize;
+    let region_width = window.width();
+    let region_height = window.height();
+    let camera_region_x = (transform.translation.x / region_width).floor() as isize;
+    let camera_region_y = (transform.translation.y / region_height).floor() as isize;
     if spawner_r.last_processed_player_region_x.unwrap_or(camera_region_x+1) == camera_region_x &&
         spawner_r.last_processed_player_region_y.unwrap_or(camera_region_y+1) == camera_region_y  {
         return;
@@ -125,13 +147,13 @@ fn spawn_obstales(
             continue;
         }
 
-        for (obstacle_type, ox, oy) in xy_walk_spawner() {
-            let x = rx as f32 * REGION_WIDTH + ox;
-            let y = ry as f32 * REGION_HEIGHT - oy;
+        for (obstacle_type, ox, oy) in xy_walk_spawner(region_width, region_height) {
+            let x = (rx as f32 - 0.5) * region_width + ox;
+            let y = ry as f32 * region_height - oy;
 
-            let (sprite_rect, collidable_dimension, offsets) = match obstacle_type {
-                ObstacleType::Tree => (game_resources.tree, TREE_COLLIDABLE_DIMENSIONS, TREE_COLLIDABLE_OFFSETS),
-                ObstacleType::Stone => (game_resources.stone, STONE_COLLIDABLE_DIMENSIONS, STONE_COLLIDABLE_OFFSETS)
+            let (sprite_rect, collidable_dimension, offsets, offset_z) = match obstacle_type {
+                ObstacleType::Tree => (game_resources.tree, TREE_COLLIDABLE_DIMENSIONS, TREE_COLLIDABLE_OFFSETS, 0.2),
+                ObstacleType::Stone => (game_resources.stone, STONE_COLLIDABLE_DIMENSIONS, STONE_COLLIDABLE_OFFSETS, 0.1)
             };
 
             commands.spawn((
@@ -141,13 +163,13 @@ fn spawn_obstales(
                         rect: Some(sprite_rect.clone()),
                         ..default()
                     },
-                    texture: texture_handle.clone(),
-                    transform: Transform::from_xyz(x, y, 0.),
+                    texture: game_resources.image_handle.clone(),
+                    transform: Transform::from_xyz(x, y, PLAYER_Z_INDEX + 1.0 + offset_z),
                     ..default()
                 },
                 Collidable::new(x, y, collidable_dimension.0, collidable_dimension.1, offsets.0, offsets.1),
                 Alive,
-                Obstacle
+                Obstacle,
             ))
             .with_children(|parent| {
                 parent.spawn((
@@ -172,13 +194,18 @@ fn spawn_obstales(
 
 fn cleanup_regions(
     camera_q: Query<&Transform, With<Camera>>,
+    window: Query<&Window>,
     mut spawner_r: ResMut<ObstacleSpawner>,
 ) {
     let Ok(transform) = camera_q.get_single() else {
         return;
     };
+    let Ok(window) = window.get_single() else {
+        return;
+    };
+    let region_height = window.height();
 
-    let camera_region_y = (transform.translation.y / REGION_HEIGHT).floor() as isize;
+    let camera_region_y = (transform.translation.y / region_height).floor() as isize;
     spawner_r.spawned_regions.retain(|(_, y)| y <= &camera_region_y);
 }
 

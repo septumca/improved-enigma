@@ -31,14 +31,7 @@ fn leave_trail(
         return;
     };
 
-    let offsets = match direction {
-        Direction::Down | Direction::Right(0) | Direction::Left(0) => vec![(-2.* SCALE_FACTOR, -1.* SCALE_FACTOR), (2.* SCALE_FACTOR, -1.* SCALE_FACTOR)],
-        Direction::Right(1) | Direction::Left(1) => vec![(-2.* SCALE_FACTOR, -2.* SCALE_FACTOR), (2.* SCALE_FACTOR, -2.* SCALE_FACTOR)],
-        Direction::Right(2) | Direction::Left(2) => vec![(-2.* SCALE_FACTOR, -3.* SCALE_FACTOR), (2.* SCALE_FACTOR, -3.* SCALE_FACTOR)],
-        Direction::Right(3) => vec![(-2.* SCALE_FACTOR, -4.* SCALE_FACTOR), (2.* SCALE_FACTOR, -3.* SCALE_FACTOR)],
-        Direction::Left(3) => vec![(-2.* SCALE_FACTOR, -3.* SCALE_FACTOR), (2.* SCALE_FACTOR, -4.* SCALE_FACTOR)],
-        _ => vec![]
-    };
+    let offsets = direction.get_standing_position_offset();
 
     for (dx, dy) in offsets {
         commands.spawn((
