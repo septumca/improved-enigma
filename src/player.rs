@@ -69,9 +69,9 @@ impl Direction {
         match self {
             Self::Down | Self::Right(0) | Self::Left(0) => vec![(-2.* SCALE_FACTOR, -1.* SCALE_FACTOR), (2.* SCALE_FACTOR, -1.* SCALE_FACTOR)],
             Self::Right(1) | Self::Left(1) => vec![(-2.* SCALE_FACTOR, -2.* SCALE_FACTOR), (2.* SCALE_FACTOR, -2.* SCALE_FACTOR)],
-            Self::Right(2) | Self::Left(2) => vec![(-2.* SCALE_FACTOR, -3.* SCALE_FACTOR), (2.* SCALE_FACTOR, -3.* SCALE_FACTOR)],
-            Self::Right(3) => vec![(-2.* SCALE_FACTOR, -4.* SCALE_FACTOR), (2.* SCALE_FACTOR, -3.* SCALE_FACTOR)],
-            Self::Left(3) => vec![(-2.* SCALE_FACTOR, -3.* SCALE_FACTOR), (2.* SCALE_FACTOR, -4.* SCALE_FACTOR)],
+            Self::Right(2) | Self::Left(2) | Self::Right(3) | Self::Left(3) => vec![(-2.* SCALE_FACTOR, -3.* SCALE_FACTOR), (2.* SCALE_FACTOR, -3.* SCALE_FACTOR)],
+            // Self::Right(3) => vec![(-2.* SCALE_FACTOR, -4.* SCALE_FACTOR), (2.* SCALE_FACTOR, -3.* SCALE_FACTOR)],
+            // Self::Left(3) => vec![(-2.* SCALE_FACTOR, -3.* SCALE_FACTOR), (2.* SCALE_FACTOR, -4.* SCALE_FACTOR)],
             _ => vec![]
         }
     }
@@ -146,6 +146,13 @@ struct ScoreText;
 #[derive(Component)]
 struct GameOverText;
 
+#[derive(Component)]
+struct LeftSki;
+
+#[derive(Component)]
+struct RightSki;
+
+
 pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
@@ -175,12 +182,19 @@ impl Plugin for PlayerPlugin {
 fn keyboard_input(
     keyboard_input: Res<Input<KeyCode>>,
     game_resources: Res<GameResources>,
-    mut player_q: Query<(&mut Sprite, &mut Direction, &mut Player), With<Alive>>
+    mut player_q: Query<(&mut Sprite, &mut Direction, &mut Player), (With<Alive>, Without<LeftSki>, Without<RightSki>)>,
+    mut left_ski: Query<&mut Transform, (With<LeftSki>, Without<RightSki>)>,
+    mut right_ski: Query<&mut Transform, (With<RightSki>, Without<LeftSki>)>
 ) {
     let Ok((mut sprite, mut direction, mut player)) = player_q.get_single_mut() else {
         return;
     };
-
+    let Ok(mut lski_transform) = left_ski.get_single_mut() else {
+        return;
+    };
+    let Ok(mut rski_transform) = right_ski.get_single_mut() else {
+        return;
+    };
     let mut control_type = None;
     if keyboard_input.pressed(KeyCode::A) && player.turn_rate.finished() {
         control_type = Some(UiControlType::Left);
@@ -197,8 +211,37 @@ fn keyboard_input(
         &game_resources,
         &mut sprite,
         &mut direction,
-        &mut player
+        &mut player,
+        // &mut lski_transform,
+        // &mut rski_transform
     );
+
+    match *direction {
+        Direction::Down => {
+            lski_transform.rotation = Quat::from_rotation_z(0.0);
+            rski_transform.rotation = Quat::from_rotation_z(0.0);
+        },
+        Direction::Left(x) => {
+            let angle = FRAC_PI_8 * (x as f32 + 1.0);
+            lski_transform.rotation = Quat::from_rotation_z(-angle);
+            rski_transform.rotation = Quat::from_rotation_z(-angle);
+            if x > 0 {
+                rski_transform.translation.y = -3.0 * SCALE_FACTOR;
+            } else {
+                rski_transform.translation.y = -2.0 * SCALE_FACTOR;
+            }
+        },
+        Direction::Right(x) => {
+            let angle = FRAC_PI_8 * (x as f32 + 1.0);
+            lski_transform.rotation = Quat::from_rotation_z(angle);
+            rski_transform.rotation = Quat::from_rotation_z(angle);
+            if x > 0 {
+                lski_transform.translation.y = -3.0 * SCALE_FACTOR;
+            } else {
+                lski_transform.translation.y = -2.0 * SCALE_FACTOR;
+            }
+        },
+    };
 }
 
 fn update_player(
@@ -310,6 +353,32 @@ pub fn setup(
                 ..default()
             },
             DebugMarker
+        ));
+
+        parent.spawn((
+            SpriteBundle {
+                sprite: Sprite {
+                    color: Color::BLACK,
+                    custom_size: Some(Vec2::new(1.0 * SCALE_FACTOR, 6.0 * SCALE_FACTOR)),
+                    ..default()
+                },
+                transform: Transform::from_xyz(-1.5 * SCALE_FACTOR, -2.0 * SCALE_FACTOR, -0.5),
+                ..default()
+            },
+            LeftSki
+        ));
+
+        parent.spawn((
+            SpriteBundle {
+                sprite: Sprite {
+                    color: Color::BLACK,
+                    custom_size: Some(Vec2::new(1.0 * SCALE_FACTOR, 6.0 * SCALE_FACTOR)),
+                    ..default()
+                },
+                transform: Transform::from_xyz(1.5 * SCALE_FACTOR, -2.0 * SCALE_FACTOR, -0.5),
+                ..default()
+            },
+            RightSki
         ));
     })
     ;

@@ -1,6 +1,6 @@
 use bevy::{prelude::*};
 
-use crate::{GameResources, despawn, GameState, is_running_on_desktop};
+use crate::{GameResources, despawn, GameState, RunningOs};
 
 #[derive(Component)]
 pub struct TutorialText;
@@ -17,6 +17,7 @@ impl Plugin for TutorialPlugin {
 
 fn setup(
     mut commands: Commands,
+    running_os: Res<RunningOs>,
     game_resources: Res<GameResources>,
 ) {
     let text_style = TextStyle {
@@ -25,7 +26,7 @@ fn setup(
         color: Color::BLACK,
     };
     let text_alignment = TextAlignment::Center;
-    let text = if !is_running_on_desktop() {
+    let text = if !running_os.is_running_on_known_desktop {
         "Press buttons\nto turn"
     } else {
         "Press A and D\nto turn"

@@ -27,7 +27,9 @@ pub fn steer_player(
     game_resources: &GameResources,
     sprite: &mut Sprite,
     direction: &mut Direction,
-    player: &mut Player
+    player: &mut Player,
+    // lski_transform: &mut Transform,
+    // rski_transform: &mut Transform,
 ) {
     match control_type {
         UiControlType::Left => *direction = direction.steer_left(),

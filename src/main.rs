@@ -28,10 +28,7 @@ pub mod uicontrols;
 TODO
 - refactor
 - upravit zatacanie
-    1. encapsulnut direction - aby enumy neleakovaly
-    2. prerobit enumy na rotation f32
-    3. extrahovat lyze do samostatnych obrazkov a child componentov
-    4. na zaklade rotacie nastavit rotaciu lyzi a ich vzdialenost od seba
+    1. prerobit enumy na rotation f32
 - upravit pohyb
     1. pre urcitu direction (po novom rotation) bude stanovena
          maximalna rychlost
@@ -62,7 +59,11 @@ pub enum GameState {
 
 fn main() {
     let mut app = App::new();
+    let is_running_on_known_desktop = os_info::get().os_type() != Type::Unknown;
     app
+        .insert_resource(RunningOs {
+            is_running_on_known_desktop
+        })
         .insert_resource(ClearColor(Color::rgb(0.95, 0.95, 1.0)))
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
@@ -83,7 +84,7 @@ fn main() {
         .add_plugin(TrailPlugin)
         .add_plugin(GameOverPlugin);
 
-    if !is_running_on_desktop() {
+    if !is_running_on_known_desktop {
         app.add_plugin(UiControlsPlugin);
     }
     #[cfg(debug_assertions)]
@@ -95,14 +96,13 @@ fn main() {
     app.run();
 }
 
-fn is_running_on_desktop() -> bool {
-    let info = os_info::get();
-    info!("OS info: {info}");
-    info.os_type() != Type::Unknown
-}
-
 #[derive(Component)]
 pub struct Alive;
+
+#[derive(Resource)]
+pub struct RunningOs {
+    is_running_on_known_desktop: bool,
+}
 
 
 #[derive(Resource)]
@@ -124,6 +124,7 @@ fn setup(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     audio: Res<Audio>,
+    running_os: Res<RunningOs>,
     audio_sinks: Res<Assets<AudioSink>>
 ) {
     let image_handle = asset_server.load("spritesheet.png");
@@ -133,7 +134,8 @@ fn setup(
         music,
         PlaybackSettings::LOOP.with_volume(0.25),
     ));
-    if !is_running_on_desktop() {
+
+    if !running_os.is_running_on_known_desktop {
         if let Some(sink) = audio_sinks.get(&music_controller) {
             sink.toggle();
         }
