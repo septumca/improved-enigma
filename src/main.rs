@@ -7,10 +7,12 @@ use debug::DebugPlugin;
 use gameover::GameOverPlugin;
 use menu::MenuPlugin;
 use obstacle::ObstaclePlugin;
+use os_info::Type;
 use player::{PlayerPlugin};
 use posts::PostsPlugin;
 use trail::TrailPlugin;
 use tutorial::TutorialPlugin;
+use uicontrols::UiControlsPlugin;
 
 pub mod player;
 pub mod obstacle;
@@ -21,8 +23,10 @@ pub mod tutorial;
 pub mod gameover;
 pub mod trail;
 pub mod posts;
+pub mod uicontrols;
 /*
 TODO
+- refactor
 - upravit zatacanie
     1. encapsulnut direction - aby enumy neleakovaly
     2. prerobit enumy na rotation f32
@@ -39,7 +43,6 @@ TODO
     2. spawnovat obstacles v ramci gridu s random offsetom
     3. podobne aj s posts, vzdialenost bude v ramci policok
      (resp. sa vie vypocitat do ktorych policok spadaju posty a tam sa nevyspawnuje ziadna obstacle)
-- na mobile nefunguje touch - na lepsie debugovanie asi pozriet https://itch.io/docs/butler/
 - yeti
  */
 
@@ -47,12 +50,12 @@ const SCREEN_WIDTH: f32 = 640.0;
 const SCREEN_HEIGHT: f32 = 480.0;
 pub const SPRITE_SIZE: f32 = 12.0;
 pub const SCALE_FACTOR: f32 = 4.0;
-
+const NORMAL_BUTTON: Color = Color::rgb(0.35, 0.75, 0.35);
 
 #[derive(Clone, Copy, Default, Eq, PartialEq, Debug, Hash, States)]
 pub enum GameState {
-    #[default]
     Playing,
+    #[default]
     MainMenu,
     GameOver,
 }
@@ -80,7 +83,9 @@ fn main() {
         .add_plugin(TrailPlugin)
         .add_plugin(GameOverPlugin);
 
-
+    if !is_running_on_desktop() {
+        app.add_plugin(UiControlsPlugin);
+    }
     #[cfg(debug_assertions)]
     {
         app.add_plugin(WorldInspectorPlugin::new());
@@ -88,6 +93,12 @@ fn main() {
     }
 
     app.run();
+}
+
+fn is_running_on_desktop() -> bool {
+    let info = os_info::get();
+    info!("OS info: {info}");
+    info.os_type() != Type::Unknown
 }
 
 #[derive(Component)]
@@ -122,6 +133,11 @@ fn setup(
         music,
         PlaybackSettings::LOOP.with_volume(0.25),
     ));
+    if !is_running_on_desktop() {
+        if let Some(sink) = audio_sinks.get(&music_controller) {
+            sink.toggle();
+        }
+    }
     let game_resource = GameResources {
         image_handle,
         font_handle,

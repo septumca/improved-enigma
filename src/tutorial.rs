@@ -1,6 +1,6 @@
 use bevy::{prelude::*};
 
-use crate::{GameResources, despawn, GameState};
+use crate::{GameResources, despawn, GameState, is_running_on_desktop};
 
 #[derive(Component)]
 pub struct TutorialText;
@@ -24,11 +24,15 @@ fn setup(
         font_size: 30.0,
         color: Color::BLACK,
     };
-    let text_alignment = TextAlignment::Right;
-
+    let text_alignment = TextAlignment::Center;
+    let text = if !is_running_on_desktop() {
+        "Press buttons\nto turn"
+    } else {
+        "Press A and D\nto turn"
+    };
     commands.spawn((
         Text2dBundle {
-            text: Text::from_section("Use A and D\nmouse click\nor touch\nto turn", text_style.clone()).with_alignment(text_alignment),
+            text: Text::from_section(text, text_style.clone()).with_alignment(text_alignment),
             transform: Transform::from_xyz(0., -250., 0.5),
             ..default()
         },

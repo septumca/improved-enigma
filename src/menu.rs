@@ -1,12 +1,12 @@
 use std::{fmt};
 use bevy::{prelude::*};
 
-use crate::{GameState, GameResources, despawn};
+use crate::{GameState, GameResources, despawn, NORMAL_BUTTON};
 
 
 pub struct MenuPlugin;
 
-#[derive(Clone)]
+#[derive(Clone, Component)]
 enum MainMenuItem {
     Play,
 }
@@ -21,13 +21,8 @@ impl fmt::Display for MainMenuItem {
 
 
 #[derive(Component)]
-struct MenuText;
+struct Menu;
 
-#[derive(Component)]
-struct MainMenuItems(Vec<MainMenuItem>);
-
-#[derive(Component)]
-struct SelectedItemIndex(usize);
 
 impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
@@ -35,10 +30,31 @@ impl Plugin for MenuPlugin {
             .add_system(setup.in_schedule(OnEnter(GameState::MainMenu)))
             .add_systems(
                 (
-                    input,
+                    controls_interaction,
                 ).in_set(OnUpdate(GameState::MainMenu))
             )
-            .add_system(despawn::<MenuText>.in_schedule(OnExit(GameState::MainMenu)));
+            .add_system(despawn::<Menu>.in_schedule(OnExit(GameState::MainMenu)));
+    }
+}
+
+fn controls_interaction(
+    interaction_query: Query<
+        (&Interaction, &MainMenuItem),
+        (Changed<Interaction>, With<Button>),
+    >,
+    mut app_state: ResMut<NextState<GameState>>,
+) {
+    for (interaction, menu_item) in &interaction_query {
+        match *interaction {
+            Interaction::Clicked => {
+                match menu_item {
+                    MainMenuItem::Play => {
+                        app_state.set(GameState::Playing);
+                    }
+                }
+            },
+            _ => {}
+        }
     }
 }
 
@@ -53,10 +69,6 @@ fn setup(
     };
     let text_alignment = TextAlignment::Center;
 
-    let items = vec![MainMenuItem::Play];
-    commands.spawn(MainMenuItems(items.clone()));
-    commands.spawn(SelectedItemIndex(0));
-
     commands
         .spawn((
             NodeBundle {
@@ -68,19 +80,17 @@ fn setup(
                 },
                 ..Default::default()
             },
-            MenuText
+            Menu
         ))
-        .with_children(|parent| {
-            for (index, item ) in items.iter().enumerate() {
-                parent.spawn((
-                    TextBundle::from_section(
-                        item.to_string(),
-                        text_style.clone(),
-                    )
-                    .with_text_alignment(text_alignment)
-                    .with_style(Style {
+        .with_children(|builder| {
+            builder.spawn((
+                ButtonBundle {
+                    style: Style {
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        position_type: PositionType::Absolute,
                         position: UiRect {
-                            top: Val::Px(40.0 * index as f32 + 120.0),
+                            top: Val::Px(100.0),
                             ..default()
                         },
                         margin: UiRect {
@@ -88,12 +98,51 @@ fn setup(
                             right: Val::Auto,
                             ..default()
                         },
+                        padding: UiRect {
+                            left: Val::Px(12.0),
+                            right: Val::Px(12.0),
+                            top: Val::Px(8.0),
+                            bottom: Val::Px(8.0)
+                        },
                         ..default()
-                    }),
+                    },
+                    background_color: NORMAL_BUTTON.into(),
+                    ..default()
+                },
+                MainMenuItem::Play,
+            ))
+            .with_children(|parent| {
+                parent.spawn(TextBundle::from_section(
+                    "Play",
+                    text_style.clone(),
                 ));
-            }
+            });
 
-            parent.spawn((
+            builder.spawn((
+                TextBundle::from_section(
+                    format!("Credits: TODO"),
+                    TextStyle {
+                        font: game_resources.font_handle.clone(),
+                        font_size: 24.0,
+                        color: Color::BLACK,
+                    },
+                )
+                .with_text_alignment(text_alignment)
+                .with_style(Style {
+                    position: UiRect {
+                        top: Val::Px(200.0),
+                        ..default()
+                    },
+                    margin: UiRect {
+                        left: Val::Auto,
+                        right: Val::Auto,
+                        ..default()
+                    },
+                    ..default()
+                }),
+            ));
+
+            builder.spawn((
                 TextBundle::from_section(
                     "Press M to toggle music",
                     TextStyle {
@@ -117,49 +166,4 @@ fn setup(
                 }),
             ));
         });
-}
-
-fn input(
-    mut keyboard_input: ResMut<Input<KeyCode>>,
-    items_q: Query<&MainMenuItems>,
-    mut index_q: Query<&mut SelectedItemIndex>,
-    mut app_state: ResMut<NextState<GameState>>,
-) {
-    let Ok(items) = items_q.get_single() else {
-        return;
-    };
-    let Ok(mut index) = index_q.get_single_mut() else {
-        return;
-    };
-
-    if keyboard_input.just_pressed(KeyCode::Up) {
-        index.0 = prev_item(index.0, items.0.len());
-    }
-    if keyboard_input.just_pressed(KeyCode::Down) {
-        index.0 = next_item(index.0, items.0.len());
-    }
-    if keyboard_input.just_pressed(KeyCode::Return) {
-        match items.0[index.0] {
-            MainMenuItem::Play => {
-                app_state.set(GameState::Playing);
-                keyboard_input.reset(KeyCode::Return);
-            },
-        }
-    }
-}
-
-fn prev_item(selected_item_index: usize, length: usize) -> usize {
-    if selected_item_index == 0 {
-        length - 1
-    } else {
-        selected_item_index - 1
-    }
-}
-
-pub fn next_item(selected_item_index: usize, length: usize) -> usize {
-    if selected_item_index + 1 >= length {
-        0
-    } else {
-        selected_item_index + 1
-    }
 }

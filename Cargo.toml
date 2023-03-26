@@ -1,5 +1,5 @@
 [package]
-name = "onewalker"
+name = "prashan"
 version = "0.1.0"
 edition = "2021"
 
@@ -9,6 +9,7 @@ edition = "2021"
 bevy = "0.10"
 bevy-inspector-egui = "0.18.1"
 rand = "0.8.5"
+os_info = { version = "3", default-features = false }
 
 # Enable a small amount of optimization in debug mode
 [profile.dev]
