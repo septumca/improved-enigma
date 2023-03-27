@@ -28,6 +28,7 @@ pub struct YetiSpawner {
 pub enum YetiState {
     Chasing,
     Stuned,
+    Catched
 }
 
 #[derive(Component)]
@@ -71,7 +72,7 @@ fn update_yeti_state(
     yeti.ignore_collisions.tick(dt);
 
     let new_state = match *yeti_state {
-        YetiState::Chasing => None,
+        YetiState::Chasing | YetiState::Catched => None,
         YetiState::Stuned => {
             if yeti.stun_timer.tick(dt).finished() {
                 yeti.ignore_collisions.reset();
@@ -85,7 +86,7 @@ fn update_yeti_state(
             } else {
                 None
             }
-        }
+        },
     };
 
     if let Some(new_state) = new_state {
@@ -157,6 +158,7 @@ fn update_spawner(
                 ));
                 x += game_resources.sprite_size;
             }
+            yeti_spawner.timer.set_duration(Duration::from_secs_f32(2.0));
             YetiSpawnPhase::Step
         },
         YetiSpawnPhase::Step => {
@@ -210,7 +212,6 @@ fn update_spawner(
                   DebugMarker
               ));
           });
-          yeti_spawner.timer.set_duration(Duration::from_secs_f32(2.0));
           YetiSpawnPhase::Spawned
         },
         YetiSpawnPhase::Spawned => {

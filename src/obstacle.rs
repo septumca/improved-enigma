@@ -259,7 +259,7 @@ fn process_collisions_yeti(
     mut obstacles_q: Query<&Collidable, (With<Obstacle>, Without<Yeti>)>
 ) {
     let Ok((
-        entity_yeti,
+        _entity_yeti,
         mut animation,
         mut yeti,
         mut yeti_state,
@@ -281,7 +281,6 @@ fn process_collisions_yeti(
         collidable_obstacle.intersect(&collidable_yeti)
     });
     if has_collided_obstacle {
-        info!("FALLEN ANIMATION");
         *yeti_state = YetiState::Stuned;
         yeti.stun_timer.reset();
         animation.set_frames(vec![game_resources.yeti_fallen]);
@@ -289,6 +288,7 @@ fn process_collisions_yeti(
     }
 
     if collidable_player.intersect(&collidable_yeti) {
-        info!("YETI CATCHED PLAYER!");
+        commands.entity(entity_player).remove::<Alive>();
+        *yeti_state = YetiState::Catched;
     }
 }

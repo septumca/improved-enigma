@@ -1,7 +1,7 @@
 use std::{f32::consts::{FRAC_PI_2, PI, FRAC_PI_8}};
 use bevy::{prelude::*, math::vec2};
 
-use crate::{GameResources, Alive, GameState, collidable::Collidable, despawn, debug::{DebugMarker}, SCALE_FACTOR, uicontrols::{UiControlType, steer_player}};
+use crate::{GameResources, Alive, GameState, collidable::Collidable, despawn, debug::{DebugMarker}, SCALE_FACTOR, uicontrols::{UiControlType, steer_player}, yeti::{YetiState, Yeti}};
 
 
 const SPEED: f32 = 50.0 * SCALE_FACTOR;
@@ -260,13 +260,24 @@ fn update_score_text(
 
 fn gameover_detection(
     time: Res<Time>,
-    mut timer_q: Query<&mut Slowdown, (With<Player>, Without<Alive>)>,
+    mut player_q: Query<Option<&mut Slowdown>, (With<Player>, Without<Alive>)>,
+    yeti_q: Query<&YetiState, (With<Yeti>, Without<Player>)>,
     mut app_state: ResMut<NextState<GameState>>,
 ) {
-    let Ok(mut slowdown) = timer_q.get_single_mut() else {
-        return;
+    let mut is_game_over = false;
+    if let Ok(slowdown) = player_q.get_single_mut() {
+        if let Some(mut slowdown) = slowdown {
+            if slowdown.0.tick(time.delta()).just_finished() {
+                is_game_over = true;
+            }
+        } else {
+            if let Ok(yeti_state) = yeti_q.get_single() {
+                is_game_over = *yeti_state == YetiState::Catched;
+            }
+        }
     };
-    if slowdown.0.tick(time.delta()).just_finished() {
+
+    if is_game_over {
         app_state.set(GameState::GameOver)
     }
 }
