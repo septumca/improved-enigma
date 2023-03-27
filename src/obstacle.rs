@@ -11,12 +11,12 @@ use crate::{
         Player,
         Slowdown,
         FALL_TIMEOUT,
-        PLAYER_Z_INDEX
+        PLAYER_Z_INDEX, LeftSki, RightSki, self
     },
     cleanup,
     despawn,
     debug::DebugMarker,
-    SPRITE_SIZE
+    SPRITE_SIZE, yeti::{Yeti, YetiState}, animation::Animation
 };
 
 const TREE_COLLIDABLE_DIMENSIONS: (f32, f32) = (2.0 * SCALE_FACTOR, 2.0 * SCALE_FACTOR);
@@ -106,8 +106,9 @@ impl Plugin for ObstaclePlugin {
             .add_systems(
                 (
                     spawn_obstales,
-                    update_collidables,
-                    process_collisions.after(update_collidables),
+                    update_collidables.after(player::update_player),
+                    process_collisions_player.after(update_collidables),
+                    process_collisions_yeti.after(update_collidables),
                     cleanup::<Obstacle>,
                     cleanup_regions.after(spawn_obstales),
                 ).in_set(OnUpdate(GameState::Playing))
@@ -225,10 +226,11 @@ fn update_collidables(
     }
 }
 
-fn process_collisions(
+fn process_collisions_player(
     mut commands: Commands,
-    sprite_rects: Res<GameResources>,
+    game_resources: Res<GameResources>,
     mut player_q: Query<(Entity, &mut Sprite, &Collidable), (With<Player>, With<Alive>, Without<Obstacle>)>,
+    skis_q: Query<Entity, Or<(With<LeftSki>, With<RightSki>)>>,
     mut obstacles_q: Query<&Collidable, (With<Obstacle>, Without<Player>)>
 ) {
     let Ok((entity, mut sprite, collidable_player)) = player_q.get_single_mut() else {
@@ -240,8 +242,53 @@ fn process_collisions(
     });
 
     if has_collided {
+        for ski_entity in &skis_q {
+            commands.entity(ski_entity).despawn_recursive();
+        }
         commands.entity(entity).remove::<Alive>();
         commands.entity(entity).insert(Slowdown(Timer::from_seconds(FALL_TIMEOUT, TimerMode::Once)));
-        sprite.rect = Some(sprite_rects.fall_down);
+        sprite.rect = Some(game_resources.fall_down);
+    }
+}
+
+fn process_collisions_yeti(
+    mut commands: Commands,
+    game_resources: Res<GameResources>,
+    mut yeti_q: Query<(Entity, &mut Animation, &mut Yeti, &mut YetiState, &Collidable), (With<Yeti>, With<Alive>, Without<Obstacle>)>,
+    player_q: Query<(Entity, &Collidable), (With<Player>, With<Alive>, Without<Obstacle>, Without<Yeti>)>,
+    mut obstacles_q: Query<&Collidable, (With<Obstacle>, Without<Yeti>)>
+) {
+    let Ok((
+        entity_yeti,
+        mut animation,
+        mut yeti,
+        mut yeti_state,
+        collidable_yeti
+    )) = yeti_q.get_single_mut() else {
+        return;
+    };
+    if !yeti.ignore_collisions.finished() || *yeti_state == YetiState::Stuned {
+        return;
+    }
+    let Ok((
+        entity_player,
+        collidable_player
+    )) = player_q.get_single() else {
+        return;
+    };
+
+    let has_collided_obstacle = obstacles_q.iter_mut().any(|collidable_obstacle| {
+        collidable_obstacle.intersect(&collidable_yeti)
+    });
+    if has_collided_obstacle {
+        info!("FALLEN ANIMATION");
+        *yeti_state = YetiState::Stuned;
+        yeti.stun_timer.reset();
+        animation.set_frames(vec![game_resources.yeti_fallen]);
+        return;
+    }
+
+    if collidable_player.intersect(&collidable_yeti) {
+        info!("YETI CATCHED PLAYER!");
     }
 }

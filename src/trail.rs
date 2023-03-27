@@ -6,7 +6,7 @@ use crate::{despawn, GameState, player::{Player, Direction}, Alive, SCALE_FACTOR
 const TRAIL_SIZE: (f32, f32) = (1.0 * SCALE_FACTOR, 1.0 * SCALE_FACTOR);
 
 #[derive(Component)]
-struct Trail;
+pub struct Trail;
 
 
 pub struct TrailPlugin;
@@ -25,7 +25,7 @@ impl Plugin for TrailPlugin {
 
 fn leave_trail(
     mut commands: Commands,
-    player_q: Query<(&Transform, &Direction), (With<Player>, With<Alive>)>,
+    player_q: Query<(&Transform, &Direction), (Changed<Transform>, With<Player>, With<Alive>)>,
 ) {
     let Ok((transform, direction)) = player_q.get_single() else {
         return;

@@ -1,3 +1,4 @@
+use animation::AnimationPlugin;
 use bevy::{prelude::*, window::WindowResolution};
 
 #[cfg(debug_assertions)]
@@ -13,6 +14,7 @@ use posts::PostsPlugin;
 use trail::TrailPlugin;
 use tutorial::TutorialPlugin;
 use uicontrols::UiControlsPlugin;
+use yeti::YetiPlugin;
 
 pub mod player;
 pub mod obstacle;
@@ -24,23 +26,25 @@ pub mod gameover;
 pub mod trail;
 pub mod posts;
 pub mod uicontrols;
+pub mod yeti;
+pub mod animation;
 /*
 TODO
 - refactor
-- upravit zatacanie
-    1. prerobit enumy na rotation f32
+    1. componenty v samostatnom subore
+    2. systemy v samostatnych suboroch, lepsie rozdelit podla funkcie?
 - upravit pohyb
-    1. pre urcitu direction (po novom rotation) bude stanovena
-         maximalna rychlost
-         akceleracia
-         deakceleracia
-    2. pri zmene rotacie sa postupne (de)akceleruje na maximalnu rychlost
+    1. pri zmene rotacie sa postupne (de)akceleruje na aktualnu rychlost -> toto asi nebude nutne
 - upravit spawnovanie
     1. rozdelit priestor do vacsich gridov (e.g. 24x24)
     2. spawnovat obstacles v ramci gridu s random offsetom
     3. podobne aj s posts, vzdialenost bude v ramci policok
      (resp. sa vie vypocitat do ktorych policok spadaju posty a tam sa nevyspawnuje ziadna obstacle)
 - yeti
+    1. pridan stun efect
+    2. oddebugovat, vyzera ze teraz sa hybe po stune ale nema spravnu animaciu
+    3. spravit stopy
+    4. spravit game over state ked chyti hraca
  */
 
 const SCREEN_WIDTH: f32 = 640.0;
@@ -82,6 +86,8 @@ fn main() {
         .add_plugin(ObstaclePlugin)
         .add_plugin(PostsPlugin)
         .add_plugin(TrailPlugin)
+        .add_plugin(YetiPlugin)
+        .add_plugin(AnimationPlugin)
         .add_plugin(GameOverPlugin);
 
     if !is_running_on_known_desktop {
@@ -118,6 +124,10 @@ pub struct GameResources {
     stone: Rect,
     red_post: Rect,
     blue_post: Rect,
+    yeti_run: Vec<Rect>,
+    yeti_fallen: Rect,
+    yeti_step: Rect,
+    stun: Rect,
 }
 
 fn setup(
@@ -157,6 +167,14 @@ fn setup(
         stone: Rect::new(7. * SPRITE_SIZE, 0., 8. * SPRITE_SIZE, SPRITE_SIZE),
         red_post: Rect::new(8. * SPRITE_SIZE, 0., 9. * SPRITE_SIZE, SPRITE_SIZE),
         blue_post: Rect::new(9. * SPRITE_SIZE, 0., 10. * SPRITE_SIZE, SPRITE_SIZE),
+        yeti_run: vec![
+            Rect::new(10. * SPRITE_SIZE, 0., 11. * SPRITE_SIZE, SPRITE_SIZE),
+            Rect::new(11. * SPRITE_SIZE, 0., 12. * SPRITE_SIZE, SPRITE_SIZE),
+            Rect::new(12. * SPRITE_SIZE, 0., 13. * SPRITE_SIZE, SPRITE_SIZE),
+        ],
+        yeti_fallen: Rect::new(13. * SPRITE_SIZE, 0., 14. * SPRITE_SIZE, SPRITE_SIZE),
+        yeti_step: Rect::new(14. * SPRITE_SIZE, 0., 15. * SPRITE_SIZE, SPRITE_SIZE),
+        stun: Rect::new(15. * SPRITE_SIZE, 0., 16. * SPRITE_SIZE, SPRITE_SIZE),
     };
 
     commands.insert_resource(game_resource);
