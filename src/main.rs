@@ -7,10 +7,12 @@ use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use debug::DebugPlugin;
 use gameover::GameOverPlugin;
 use menu::MenuPlugin;
+use music::MusicPlugin;
 use obstacle::ObstaclePlugin;
 use os_info::Type;
 use player::{PlayerPlugin};
 use posts::PostsPlugin;
+use sounds::{SoundPlugin, PostHitEvent};
 use stuneffect::StunPlugin;
 use trail::TrailPlugin;
 use tutorial::TutorialPlugin;
@@ -30,13 +32,16 @@ pub mod uicontrols;
 pub mod yeti;
 pub mod animation;
 pub mod stuneffect;
+pub mod music;
+pub mod sounds;
+
 /*
 TODO
 - refactor
     1. componenty v samostatnom subore
     2. systemy v samostatnych suboroch, lepsie rozdelit podla funkcie?
-- sound/music
-    - pridat, inspiracie zdroje na keepe
+- sound
+    - pridat zvuky pre yetiho a lyze
 - collision detection
     - spravit spatial tree, pridat collidable do gridu a nasledne ich updatovat, pri collision detection nasledne cekovat len najblizsie tily
 - upravit pohyb
@@ -71,6 +76,7 @@ fn main() {
     let mut app = App::new();
     let is_running_on_known_desktop = os_info::get().os_type() != Type::Unknown;
     app
+        .add_event::<PostHitEvent>()
         .insert_resource(RunningOs {
             is_running_on_known_desktop
         })
@@ -85,7 +91,8 @@ fn main() {
         }).set(ImagePlugin::default_nearest()))
         .add_state::<GameState>()
         .add_startup_system(setup)
-        .add_system(music_input)
+        .add_plugin(MusicPlugin)
+        .add_plugin(SoundPlugin)
         .add_plugin(TutorialPlugin)
         .add_plugin(MenuPlugin)
         .add_plugin(PlayerPlugin)
@@ -120,7 +127,6 @@ pub struct RunningOs {
 
 #[derive(Resource)]
 pub struct GameResources {
-    music_controller: Handle<AudioSink>,
     image_handle: Handle<Image>,
     font_handle: Handle<Font>,
     sprite_size: f32,
@@ -140,27 +146,13 @@ pub struct GameResources {
 fn setup(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
-    audio: Res<Audio>,
-    running_os: Res<RunningOs>,
-    audio_sinks: Res<Assets<AudioSink>>
 ) {
     let image_handle = asset_server.load("spritesheet.png");
     let font_handle = asset_server.load("QuinqueFive.ttf");
-    let music = asset_server.load("snow_globe_-_expanded.ogg");
-    let music_controller = audio_sinks.get_handle(audio.play_with_settings(
-        music,
-        PlaybackSettings::LOOP.with_volume(0.25),
-    ));
 
-    if !running_os.is_running_on_known_desktop {
-        if let Some(sink) = audio_sinks.get(&music_controller) {
-            sink.toggle();
-        }
-    }
     let game_resource = GameResources {
         image_handle,
         font_handle,
-        music_controller,
         sprite_size: SPRITE_SIZE * SCALE_FACTOR,
         down: Rect::new(0. * SPRITE_SIZE, 0., 1. * SPRITE_SIZE, SPRITE_SIZE),
         sides: vec![
@@ -186,18 +178,6 @@ fn setup(
 
     commands.insert_resource(game_resource);
     commands.spawn(Camera2dBundle::default());
-}
-
-fn music_input(
-    keyboard_input: Res<Input<KeyCode>>,
-    audio_sinks: Res<Assets<AudioSink>>,
-    game_resource: Res<GameResources>,
-) {
-    if keyboard_input.just_pressed(KeyCode::M) {
-        if let Some(sink) = audio_sinks.get(&game_resource.music_controller) {
-            sink.toggle();
-        }
-    }
 }
 
 fn cleanup<T: Component>(

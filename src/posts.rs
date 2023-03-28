@@ -14,7 +14,7 @@ use crate::{
     },
     cleanup,
     despawn,
-    SPRITE_SIZE
+    SPRITE_SIZE, sounds::PostHitEvent
 };
 
 const GAP_RANGE_X : (f32, f32) = (SPRITE_SIZE * SCALE_FACTOR * 2.5, SPRITE_SIZE * SCALE_FACTOR * 6.0);
@@ -178,6 +178,7 @@ fn spawn_posts(
 
 fn detect_posts_hit(
     mut posts_ordered: ResMut<PostsOrder>,
+    mut ev_posthit: EventWriter<PostHitEvent>,
     mut player_q: Query<(&Transform, &mut Score), (With<Player>, With<Alive>)>,
 ) {
     let Ok((transform, mut score)) = player_q.get_single_mut() else {
@@ -198,6 +199,7 @@ fn detect_posts_hit(
         // println!("POST X: {}, {}", post.x_left, post.x_right);
         score.increase();
         posts_ordered.posts.remove(0);
+        ev_posthit.send(PostHitEvent);
     }
 
     let Some(post) = posts_ordered.posts.get(0) else {
