@@ -9,8 +9,14 @@ const ANIMATION_TIMER: f32 = 8.0 / 60.0;
 pub struct Animation {
     pub timer: Timer,
     frames: Vec<Rect>,
-    act_frame_index: usize,
+    pub act_frame_index: usize,
 }
+
+#[derive(Component)]
+pub struct AnimateRotation {
+    pub angular_vel: f32,
+}
+
 
 impl Animation {
     pub fn new(frames: Vec<Rect>, mode: TimerMode) -> Self {
@@ -47,6 +53,7 @@ impl Plugin for AnimationPlugin {
             .add_systems(
                 (
                     update_animation,
+                    update_animate_rotation,
                 ).in_set(OnUpdate(GameState::Playing)));
     }
 }
@@ -63,5 +70,14 @@ fn update_animation(
                 sprite.rect = Some(rect);
             }
         }
+    }
+}
+
+fn update_animate_rotation(
+    timer: Res<Time>,
+    mut anim_q: Query<(&mut Transform, &AnimateRotation)>
+) {
+    for (mut transform, animate_rotation) in anim_q.iter_mut() {
+        transform.rotate(Quat::from_rotation_z(animate_rotation.angular_vel * timer.delta_seconds()));
     }
 }

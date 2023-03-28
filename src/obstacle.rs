@@ -1,3 +1,5 @@
+use std::f32::consts::PI;
+
 use bevy::{prelude::*, math::vec2, utils::HashSet};
 use rand::{self, Rng, seq::SliceRandom};
 
@@ -11,12 +13,12 @@ use crate::{
         Player,
         Slowdown,
         FALL_TIMEOUT,
-        PLAYER_Z_INDEX, LeftSki, RightSki, self
+        PLAYER_Z_INDEX, LeftSki, RightSki, self, Catched
     },
     cleanup,
     despawn,
     debug::DebugMarker,
-    SPRITE_SIZE, yeti::{Yeti, YetiState}, animation::Animation
+    SPRITE_SIZE, yeti::{Yeti, YETI_STUN_TIME}, animation::{Animation, AnimateRotation}, stuneffect::{Stun, StunEffect}
 };
 
 const TREE_COLLIDABLE_DIMENSIONS: (f32, f32) = (2.0 * SCALE_FACTOR, 2.0 * SCALE_FACTOR);
@@ -254,20 +256,19 @@ fn process_collisions_player(
 fn process_collisions_yeti(
     mut commands: Commands,
     game_resources: Res<GameResources>,
-    mut yeti_q: Query<(Entity, &mut Animation, &mut Yeti, &mut YetiState, &Collidable), (With<Yeti>, With<Alive>, Without<Obstacle>)>,
+    mut yeti_q: Query<(Entity, &mut Animation, &Yeti, &Collidable), (With<Yeti>, With<Alive>, Without<Obstacle>, Without<Stun>)>,
     player_q: Query<(Entity, &Collidable), (With<Player>, With<Alive>, Without<Obstacle>, Without<Yeti>)>,
     mut obstacles_q: Query<&Collidable, (With<Obstacle>, Without<Yeti>)>
 ) {
     let Ok((
-        _entity_yeti,
+        entity_yeti,
         mut animation,
-        mut yeti,
-        mut yeti_state,
+        yeti,
         collidable_yeti
     )) = yeti_q.get_single_mut() else {
         return;
     };
-    if !yeti.ignore_collisions.finished() || *yeti_state == YetiState::Stuned {
+    if !yeti.ignore_collisions.finished() {
         return;
     }
     let Ok((
@@ -281,14 +282,30 @@ fn process_collisions_yeti(
         collidable_obstacle.intersect(&collidable_yeti)
     });
     if has_collided_obstacle {
-        *yeti_state = YetiState::Stuned;
-        yeti.stun_timer.reset();
         animation.set_frames(vec![game_resources.yeti_fallen]);
+        let stun_child = commands.spawn((
+            SpriteBundle {
+                sprite: Sprite {
+                    custom_size: Some(vec2(game_resources.sprite_size, game_resources.sprite_size)),
+                    rect: Some(game_resources.stun),
+                    ..default()
+                },
+                texture: game_resources.image_handle.clone(),
+                transform: Transform::from_xyz(0.0, 7.0 * SCALE_FACTOR, 0.5),
+                ..default()
+            },
+            AnimateRotation {
+                angular_vel: PI
+            },
+            StunEffect
+        )).id();
+        commands.entity(entity_yeti).push_children(&[stun_child]);
+        commands.entity(entity_yeti).insert(Stun(Timer::from_seconds(YETI_STUN_TIME, TimerMode::Once)));
         return;
     }
 
     if collidable_player.intersect(&collidable_yeti) {
         commands.entity(entity_player).remove::<Alive>();
-        *yeti_state = YetiState::Catched;
+        commands.entity(entity_player).insert(Catched);
     }
 }

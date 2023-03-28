@@ -1,7 +1,16 @@
 use std::{f32::consts::{FRAC_PI_2, PI, FRAC_PI_8}};
 use bevy::{prelude::*, math::vec2};
 
-use crate::{GameResources, Alive, GameState, collidable::Collidable, despawn, debug::{DebugMarker}, SCALE_FACTOR, uicontrols::{UiControlType, steer_player}, yeti::{YetiState, Yeti}};
+use crate::{
+    GameResources,
+    Alive,
+    GameState,
+    collidable::Collidable,
+    despawn,
+    debug::{DebugMarker},
+    SCALE_FACTOR,
+    uicontrols::{UiControlType, steer_player}
+};
 
 
 const SPEED: f32 = 50.0 * SCALE_FACTOR;
@@ -10,7 +19,7 @@ const PLAYER_COLLIDABLE_OFFSETS: (f32, f32) = (0.0 * SCALE_FACTOR, -2.0 * SCALE_
 pub const FALL_TIMEOUT: f32 = 0.3;
 const SIDES_MAX_INDEX: usize = 3;
 pub const PLAYER_Z_INDEX: f32 = 2.0;
-const PLAYER_CAMERA_OFFSET: f32 = 32.0;
+pub const PLAYER_CAMERA_OFFSET: f32 = 32.0;
 const ROTATION_SPEED: f32 = FRAC_PI_2 * 1.5;
 const ROTATION_HINDERANCE: f32 = FRAC_PI_8 / 2.0; //at faster speed the turning is harder, this can be later upgraded to be closer to zero
 const SPRITE_ROTATION_TRESHOLD: f32 = FRAC_PI_8 / 2.0;
@@ -146,7 +155,8 @@ pub struct LeftSki;
 #[derive(Component)]
 pub struct RightSki;
 
-
+#[derive(Component)]
+pub struct Catched;
 pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
@@ -260,20 +270,17 @@ fn update_score_text(
 
 fn gameover_detection(
     time: Res<Time>,
-    mut player_q: Query<Option<&mut Slowdown>, (With<Player>, Without<Alive>)>,
-    yeti_q: Query<&YetiState, (With<Yeti>, Without<Player>)>,
+    mut player_q: Query<(Option<&mut Slowdown>, Option<&Catched>), (With<Player>, Without<Alive>)>,
     mut app_state: ResMut<NextState<GameState>>,
 ) {
     let mut is_game_over = false;
-    if let Ok(slowdown) = player_q.get_single_mut() {
+    if let Ok((slowdown, catched)) = player_q.get_single_mut() {
         if let Some(mut slowdown) = slowdown {
             if slowdown.0.tick(time.delta()).just_finished() {
                 is_game_over = true;
             }
         } else {
-            if let Ok(yeti_state) = yeti_q.get_single() {
-                is_game_over = *yeti_state == YetiState::Catched;
-            }
+            is_game_over = catched.is_some();
         }
     };
 

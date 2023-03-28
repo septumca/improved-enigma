@@ -3,13 +3,13 @@ use std::{time::Duration, f32::consts::FRAC_PI_2};
 use bevy::{prelude::*, math::vec2};
 use rand::Rng;
 
-use crate::{despawn, GameState, player::{PLAYER_Z_INDEX, Speed, Player}, Alive, SCALE_FACTOR, GameResources, collidable::Collidable, debug::DebugMarker, animation::Animation, trail::Trail};
+use crate::{despawn, GameState, player::{PLAYER_Z_INDEX, Speed, Player, PLAYER_CAMERA_OFFSET}, Alive, SCALE_FACTOR, GameResources, collidable::Collidable, debug::DebugMarker, animation::Animation, trail::Trail, stuneffect::Stun};
 
 const SPEED: f32 = 45.0 * SCALE_FACTOR;
-const YETI_COLLIDABLE_DIMENSIONS: (f32, f32) = (3.0 * SCALE_FACTOR, 3.0 * SCALE_FACTOR);
-const YETI_COLLIDABLE_OFFSETS: (f32, f32) = (0.0 * SCALE_FACTOR, -2.0 * SCALE_FACTOR);
-const YETI_STUN_TIME: f32 = 1.5;
-const YETI_SPAWNER_TIMEOUT: f32 = 30.0;
+const YETI_COLLIDABLE_DIMENSIONS: (f32, f32) = (4.0 * SCALE_FACTOR, 3.5 * SCALE_FACTOR);
+const YETI_COLLIDABLE_OFFSETS: (f32, f32) = (0.0 * SCALE_FACTOR, -2.5 * SCALE_FACTOR);
+pub const YETI_STUN_TIME: f32 = 1.5;
+const YETI_SPAWNER_TIMEOUT: (f32, f32) = (30.0, 5.0);
 
 
 enum YetiSpawnPhase {
@@ -24,16 +24,8 @@ pub struct YetiSpawner {
     timer: Timer,
 }
 
-#[derive(Component, Debug, Eq, PartialEq)]
-pub enum YetiState {
-    Chasing,
-    Stuned,
-    Catched
-}
-
 #[derive(Component)]
 pub struct Yeti {
-    pub stun_timer: Timer,
     pub ignore_collisions: Timer,
 }
 
@@ -44,11 +36,11 @@ impl Plugin for YetiPlugin {
         app
             .insert_resource(YetiSpawner {
                 phase: YetiSpawnPhase::Idle,
-                timer: Timer::from_seconds(YETI_SPAWNER_TIMEOUT, TimerMode::Once)
+                timer: Timer::from_seconds(YETI_SPAWNER_TIMEOUT.0, TimerMode::Once)
             })
             .add_systems(
                 (
-                    update_yeti_state.after(update_yeti),
+                    update_wake_up.after(update_yeti),
                     update_spawner,
                     update_yeti
                 ).in_set(OnUpdate(GameState::Playing)))
@@ -60,61 +52,44 @@ impl Plugin for YetiPlugin {
     }
 }
 
-fn update_yeti_state(
-    timer: Res<Time>,
+fn update_wake_up(
     game_resources: Res<GameResources>,
-    mut yeti_q: Query<(&mut Yeti, &mut YetiState, &mut Animation)>,
+    mut woken_up: RemovedComponents<Stun>,
+    mut yeti_q: Query<&mut Animation, (With<Alive>, With<Yeti>)>,
 ) {
-    let Ok((mut yeti, mut yeti_state, mut animation)) = yeti_q.get_single_mut() else {
-        return;
-    };
-    let dt = timer.delta();
-    yeti.ignore_collisions.tick(dt);
+    for entity_woken in woken_up.iter() {
+        let Ok(mut animation) = yeti_q.get_mut(entity_woken) else {
+            continue;
+        };
 
-    let new_state = match *yeti_state {
-        YetiState::Chasing | YetiState::Catched => None,
-        YetiState::Stuned => {
-            if yeti.stun_timer.tick(dt).finished() {
-                yeti.ignore_collisions.reset();
-                animation.set_frames(vec![
-                    game_resources.yeti_run[0],
-                    game_resources.yeti_run[1],
-                    game_resources.yeti_run[0],
-                    game_resources.yeti_run[2]
-                ]);
-                Some(YetiState::Chasing)
-            } else {
-                None
-            }
-        },
-    };
-
-    if let Some(new_state) = new_state {
-        *yeti_state = new_state;
+        animation.set_frames(vec![
+            game_resources.yeti_run[0],
+            game_resources.yeti_run[1],
+            game_resources.yeti_run[0],
+            game_resources.yeti_run[2]
+        ]);
     }
 }
 
 fn update_yeti(
     timer: Res<Time>,
-    mut yeti_q: Query<(&mut Transform, &YetiState, &Speed), Without<Player>>,
+    mut yeti_q: Query<(&mut Transform, &mut Yeti, &Speed), (Without<Player>, Without<Stun>)>,
     player_q: Query<&Transform, (With<Player>, Without<Yeti>)>,
 ) {
     let Ok((
         mut yeti_transform,
-        yeti_state,
+        mut yeti,
         speed,
     )) = yeti_q.get_single_mut() else {
         return;
     };
-    if yeti_state == &YetiState::Stuned {
-        return;
-    }
+    let dt = timer.delta();
+    yeti.ignore_collisions.tick(dt);
     let Ok(
         player_transform,
     ) = player_q.get_single() else {
         return;
     };
-    let dt = timer.delta();
     let vel = (player_transform.translation.truncate() - yeti_transform.translation.truncate()).normalize() * speed.max_speed;
     yeti_transform.translation.x += vel.x * dt.as_secs_f32();
     yeti_transform.translation.y += vel.y * dt.as_secs_f32();
@@ -158,14 +133,12 @@ fn update_spawner(
                 ));
                 x += game_resources.sprite_size;
             }
-            yeti_spawner.timer.set_duration(Duration::from_secs_f32(2.0));
+            yeti_spawner.timer.set_duration(Duration::from_secs_f32(YETI_SPAWNER_TIMEOUT.1));
             YetiSpawnPhase::Step
         },
         YetiSpawnPhase::Step => {
-            let mut stun_timer = Timer::from_seconds(YETI_STUN_TIME, TimerMode::Once);
-            stun_timer.set_elapsed(Duration::from_secs_f32(YETI_STUN_TIME));
-            let x = rng.gen_range(0.0..window.width());
-            let y = camera_transform.translation.y + window.height();
+            let x = camera_transform.translation.x + window.width() / 2.0;
+            let y = camera_transform.translation.y + rng.gen_range(0.0..(window.height() / 2.0 - PLAYER_CAMERA_OFFSET));
 
             commands.spawn((
                 SpriteBundle {
@@ -192,10 +165,8 @@ fn update_spawner(
                     game_resources.yeti_run[2]
                 ], TimerMode::Repeating),
                 Yeti {
-                    stun_timer,
                     ignore_collisions: Timer::from_seconds(0.5, TimerMode::Once)
                 },
-                YetiState::Chasing,
           ))
           .with_children(|parent| {
               parent.spawn((
@@ -228,5 +199,5 @@ fn reset_spawner(
     mut yeti_spawner: ResMut<YetiSpawner>,
 ) {
     yeti_spawner.phase = YetiSpawnPhase::Idle;
-    yeti_spawner.timer = Timer::from_seconds(YETI_SPAWNER_TIMEOUT, TimerMode::Once);
+    yeti_spawner.timer = Timer::from_seconds(YETI_SPAWNER_TIMEOUT.0, TimerMode::Once);
 }

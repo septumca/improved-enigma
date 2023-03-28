@@ -11,6 +11,7 @@ use obstacle::ObstaclePlugin;
 use os_info::Type;
 use player::{PlayerPlugin};
 use posts::PostsPlugin;
+use stuneffect::StunPlugin;
 use trail::TrailPlugin;
 use tutorial::TutorialPlugin;
 use uicontrols::UiControlsPlugin;
@@ -28,23 +29,28 @@ pub mod posts;
 pub mod uicontrols;
 pub mod yeti;
 pub mod animation;
+pub mod stuneffect;
 /*
 TODO
 - refactor
     1. componenty v samostatnom subore
     2. systemy v samostatnych suboroch, lepsie rozdelit podla funkcie?
+- sound/music
+    - pridat, inspiracie zdroje na keepe
+- collision detection
+    - spravit spatial tree, pridat collidable do gridu a nasledne ich updatovat, pri collision detection nasledne cekovat len najblizsie tily
 - upravit pohyb
     1. pri zmene rotacie sa postupne (de)akceleruje na aktualnu rychlost -> toto asi nebude nutne
+    2. po dosiahnuti nejakej vzialenosti e.g. 10000000, resetnut coordinaty na 0,0 -> parentov ziskat pomocou Without<Parent> selectoru
 - upravit spawnovanie
     1. rozdelit priestor do vacsich gridov (e.g. 24x24)
     2. spawnovat obstacles v ramci gridu s random offsetom
     3. podobne aj s posts, vzdialenost bude v ramci policok
      (resp. sa vie vypocitat do ktorych policok spadaju posty a tam sa nevyspawnuje ziadna obstacle)
 - yeti
-    1. pridan stun efect
-    2. oddebugovat, vyzera ze teraz sa hybe po stune ale nema spravnu animaciu
-    3. spravit stopy
-    4. spravit game over state ked chyti hraca
+    1. pridat AI aby sa vyhybal prekazkam
+    2. pridat animaciu ako zozerie hraca
+    3. pridat walking animaciu na strany
  */
 
 const SCREEN_WIDTH: f32 = 640.0;
@@ -88,6 +94,7 @@ fn main() {
         .add_plugin(TrailPlugin)
         .add_plugin(YetiPlugin)
         .add_plugin(AnimationPlugin)
+        .add_plugin(StunPlugin)
         .add_plugin(GameOverPlugin);
 
     if !is_running_on_known_desktop {
