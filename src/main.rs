@@ -104,9 +104,7 @@ fn main() {
         .add_plugin(StunPlugin)
         .add_plugin(GameOverPlugin);
 
-    if !is_running_on_known_desktop {
-        app.add_plugin(UiControlsPlugin);
-    }
+    app.add_plugin(UiControlsPlugin);
     #[cfg(debug_assertions)]
     {
         app.add_plugin(WorldInspectorPlugin::new());

@@ -3,7 +3,7 @@ use bevy::{prelude::*};
 use crate::{GameState, despawn, GameResources, player::{Player}, Alive, NORMAL_BUTTON};
 
 #[derive(Component)]
-struct UiControls;
+pub struct UiControls;
 
 #[derive(Component, Clone)]
 pub enum UiControlType {
@@ -18,11 +18,13 @@ impl Plugin for UiControlsPlugin {
         app
             .add_system(setup_uicontrols.in_schedule(OnEnter(GameState::Playing)))
             .add_system(despawn::<UiControls>.in_schedule(OnExit(GameState::Playing)))
-            .add_system(controls_interaction.in_set(OnUpdate(GameState::Playing)));
+            .add_system(player_input.in_set(OnUpdate(GameState::Playing)));
     }
 }
 
-fn controls_interaction(
+
+pub fn player_input(
+    keyboard_input: Res<Input<KeyCode>>,
     mut player_q: Query<&mut Player, With<Alive>>,
     interaction_query: Query<
         (&Interaction, &UiControlType),
@@ -33,7 +35,13 @@ fn controls_interaction(
         return;
     };
 
-    player.control_type = None;
+    if keyboard_input.pressed(KeyCode::A) {
+        player.control_type = Some(UiControlType::Left);
+    }
+    if keyboard_input.pressed(KeyCode::D) {
+        player.control_type = Some(UiControlType::Right);
+    }
+
     for (interaction, uicontrol_type) in &interaction_query {
         match *interaction {
             Interaction::Clicked | Interaction::Hovered => {

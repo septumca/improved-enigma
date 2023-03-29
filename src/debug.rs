@@ -130,6 +130,5 @@ fn debug_input(
 
     if keyboard_input.just_pressed(KeyCode::I) {
         debug_controls.yeti_control = !debug_controls.yeti_control;
-        info!("yeti_control: {}", debug_controls.yeti_control);
     }
 }

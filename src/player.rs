@@ -9,7 +9,7 @@ use crate::{
     despawn,
     debug::{DebugMarker},
     SCALE_FACTOR,
-    uicontrols::{UiControlType}
+    uicontrols::{UiControlType, self}
 };
 
 
@@ -174,31 +174,12 @@ impl Plugin for PlayerPlugin {
             )
             .add_systems(
                 (
-                    keyboard_input,
-                    update_player.after(keyboard_input),
+                    update_player.after(uicontrols::player_input),
                     gameover_detection.after(update_player),
                     update_score_text,
                 ).in_set(OnUpdate(GameState::Playing))
             );
     }
-}
-
-fn keyboard_input(
-    keyboard_input: Res<Input<KeyCode>>,
-    mut player_q: Query<&mut Player, With<Alive>>,
-) {
-    let Ok(mut player) = player_q.get_single_mut() else {
-        return;
-    };
-
-    let mut control_type = None;
-    if keyboard_input.pressed(KeyCode::A) {
-        control_type = Some(UiControlType::Left);
-    }
-    if keyboard_input.pressed(KeyCode::D) {
-        control_type = Some(UiControlType::Right);
-    }
-    player.control_type = control_type;
 }
 
 fn steer_player(
@@ -230,7 +211,7 @@ fn steer_player(
 pub fn update_player(
     timer: Res<Time>,
     game_resources: Res<GameResources>,
-    mut player_q: Query<(&mut Sprite, &mut Transform, &mut Speed, &mut Direction, &Player), (Without<LeftSki>, Without<RightSki>, Without<Camera>)>,
+    mut player_q: Query<(&mut Sprite, &mut Transform, &mut Speed, &mut Direction, &mut Player), (Without<LeftSki>, Without<RightSki>, Without<Camera>)>,
     mut camera_q: Query<&mut Transform, With<Camera>>,
     mut left_ski: Query<&mut Transform, (With<LeftSki>, Without<RightSki>, Without<Camera>)>,
     mut right_ski: Query<&mut Transform, (With<RightSki>, Without<LeftSki>, Without<Camera>)>
@@ -240,7 +221,7 @@ pub fn update_player(
         mut player_transform,
         mut speed,
         mut direction,
-        player
+        mut player
     )) = player_q.get_single_mut() else {
         return;
     };
@@ -265,6 +246,7 @@ pub fn update_player(
         );
     }
 
+    player.control_type = None;
     let act_speed = speed.get_speed(direction.rotation);
     let act_rotation = direction.rotation - FRAC_PI_2; //0 degrees is pointing down (e.g. [0, -1], not to [1, 0])
     let dx = act_rotation.cos() * act_speed;
