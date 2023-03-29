@@ -9,7 +9,7 @@ use crate::{
     despawn,
     debug::{DebugMarker},
     SCALE_FACTOR,
-    uicontrols::{UiControlType, steer_player}
+    uicontrols::{UiControlType}
 };
 
 
@@ -59,20 +59,21 @@ impl Direction {
     }
 
     fn get_rotation_hinderance(&self, speed: &Speed) -> f32 {
-        if speed.max_speed == speed.min_speed {
-            return ROTATION_HINDERANCE;
-        }
         (speed.get_speed(self.rotation) - speed.min_speed) / (speed.max_speed - speed.min_speed) * ROTATION_HINDERANCE
     }
 
-    pub fn steer_left(&mut self, delta: f32, speed: &Speed) {
-        let rot_hinderance = self.get_rotation_hinderance(speed);
-        self.rotation = (self.rotation - (ROTATION_SPEED - rot_hinderance) * delta).max(-FRAC_PI_2);
+    pub fn update_rotation(&mut self, rotation: f32, delta: f32) {
+        self.rotation = (self.rotation + rotation * delta).max(-FRAC_PI_2).min(FRAC_PI_2)
     }
 
-    pub fn steer_right(&mut self, delta: f32, speed: &Speed) {
+    pub fn steer_left(&mut self, speed: &Speed) -> f32 {
         let rot_hinderance = self.get_rotation_hinderance(speed);
-        self.rotation = (self.rotation + (ROTATION_SPEED - rot_hinderance) * delta).min(FRAC_PI_2);
+        -(ROTATION_SPEED - rot_hinderance)
+    }
+
+    pub fn steer_right(&mut self, speed: &Speed) -> f32 {
+        let rot_hinderance = self.get_rotation_hinderance(speed);
+        ROTATION_SPEED - rot_hinderance
     }
 
     pub fn get_standing_position_offset(&self) -> Vec<(f32, f32)> {
@@ -112,7 +113,7 @@ impl Speed {
     pub fn new(max_speed: f32, min_speed_ratio: f32) -> Self {
         Speed {
             max_speed,
-            min_speed: max_speed * min_speed_ratio.min(1.0),
+            min_speed: max_speed * min_speed_ratio.min(0.95),
         }
     }
 
@@ -136,7 +137,9 @@ impl Score {
 }
 
 #[derive(Component)]
-pub struct Player;
+pub struct Player {
+    pub control_type: Option<UiControlType>,
+}
 
 
 #[derive(Component)]
@@ -180,22 +183,11 @@ impl Plugin for PlayerPlugin {
     }
 }
 
-
 fn keyboard_input(
-    timer: Res<Time>,
     keyboard_input: Res<Input<KeyCode>>,
-    game_resources: Res<GameResources>,
-    mut player_q: Query<(&mut Sprite, &mut Direction, &Speed), (With<Player>, With<Alive>, Without<LeftSki>, Without<RightSki>)>,
-    mut left_ski: Query<&mut Transform, (With<LeftSki>, Without<RightSki>)>,
-    mut right_ski: Query<&mut Transform, (With<RightSki>, Without<LeftSki>)>
+    mut player_q: Query<&mut Player, With<Alive>>,
 ) {
-    let Ok((mut sprite, mut direction, speed)) = player_q.get_single_mut() else {
-        return;
-    };
-    let Ok(mut lski_transform) = left_ski.get_single_mut() else {
-        return;
-    };
-    let Ok(mut rski_transform) = right_ski.get_single_mut() else {
+    let Ok(mut player) = player_q.get_single_mut() else {
         return;
     };
 
@@ -206,38 +198,72 @@ fn keyboard_input(
     if keyboard_input.pressed(KeyCode::D) {
         control_type = Some(UiControlType::Right);
     }
-    let Some(control_type) = control_type else {
-        return;
+    player.control_type = control_type;
+}
+
+fn steer_player(
+    delta: f32,
+    control_type: &UiControlType,
+    game_resources: &GameResources,
+    sprite: &mut Sprite,
+    direction: &mut Direction,
+    speed: &mut Speed,
+    lski_transform: &mut Transform,
+    rski_transform: &mut Transform,
+) {
+    let rot_delta = match control_type {
+        UiControlType::Left => direction.steer_left(speed),
+        UiControlType::Right => direction.steer_right(speed),
     };
-    let dt = timer.delta_seconds();
+    direction.update_rotation(rot_delta, delta);
 
-    steer_player(
-        dt,
-        &control_type,
-        &game_resources,
-        &mut sprite,
-        &mut direction,
-        speed,
-        &mut lski_transform,
-        &mut rski_transform
-    );
-
-
+    let (lski_y, rski_y) = direction.get_skis_transform_y();
+    lski_transform.translation.y = lski_y;
+    rski_transform.translation.y = rski_y;
+    lski_transform.rotation = Quat::from_rotation_z(direction.rotation);
+    rski_transform.rotation = Quat::from_rotation_z(direction.rotation);
+    let (sprite_rect, flip_x) = direction.get_graphics(&game_resources);
+    sprite.rect = Some(sprite_rect);
+    sprite.flip_x = flip_x;
 }
 
 pub fn update_player(
     timer: Res<Time>,
-    mut player_q: Query<(&mut Transform, &Speed, &Direction), (With<Player>, Without<Camera>)>,
-    mut camera_q: Query<&mut Transform, With<Camera>>
+    game_resources: Res<GameResources>,
+    mut player_q: Query<(&mut Sprite, &mut Transform, &mut Speed, &mut Direction, &Player), (Without<LeftSki>, Without<RightSki>, Without<Camera>)>,
+    mut camera_q: Query<&mut Transform, With<Camera>>,
+    mut left_ski: Query<&mut Transform, (With<LeftSki>, Without<RightSki>, Without<Camera>)>,
+    mut right_ski: Query<&mut Transform, (With<RightSki>, Without<LeftSki>, Without<Camera>)>
 ) {
     let Ok((
+        mut sprite,
         mut player_transform,
-        speed,
-        direction,
+        mut speed,
+        mut direction,
+        player
     )) = player_q.get_single_mut() else {
         return;
     };
+    let Ok(mut lski_transform) = left_ski.get_single_mut() else {
+        return;
+    };
+    let Ok(mut rski_transform) = right_ski.get_single_mut() else {
+        return;
+    };
+
     let dt = timer.delta();
+    if let Some(control_type) = &player.control_type {
+        steer_player(
+            dt.as_secs_f32(),
+            &control_type,
+            &game_resources,
+            &mut sprite,
+            &mut direction,
+            &mut speed,
+            &mut lski_transform,
+            &mut rski_transform
+        );
+    }
 
     let act_speed = speed.get_speed(direction.rotation);
     let act_rotation = direction.rotation - FRAC_PI_2; //0 degrees is pointing down (e.g. [0, -1], not to [1, 0])
@@ -311,7 +337,9 @@ pub fn setup(
             transform: Transform::from_xyz(0., 0., PLAYER_Z_INDEX),
             ..default()
         },
-        Player,
+        Player {
+            control_type: None,
+        },
         Alive,
         Collidable::new(
             0., 0.,

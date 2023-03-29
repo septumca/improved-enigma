@@ -84,14 +84,14 @@ impl Iterator for XYFillSpawner {
 
 
 #[derive(Resource)]
-struct ObstacleSpawner {
+pub struct ObstacleSpawner {
     last_processed_player_region_y: Option<isize>,
     last_processed_player_region_x: Option<isize>,
     spawned_regions: HashSet<(isize, isize)>,
 }
 
 #[derive(Component)]
-struct Obstacle;
+pub struct Obstacle;
 
 pub struct ObstaclePlugin;
 
@@ -107,19 +107,20 @@ impl Plugin for ObstaclePlugin {
             .add_system(reset_spawner.in_schedule(OnExit(GameState::GameOver)))
             .add_systems(
                 (
-                    spawn_obstales,
+                    spawn_obstacles,
                     update_collidables.after(player::update_player),
                     process_collisions_player.after(update_collidables),
                     process_collisions_yeti.after(update_collidables),
                     cleanup::<Obstacle>,
-                    cleanup_regions.after(spawn_obstales),
+                    cleanup_regions.after(spawn_obstacles),
                 ).in_set(OnUpdate(GameState::Playing))
-            );
+            )
+            ;
     }
 }
 
 
-fn spawn_obstales(
+pub fn spawn_obstacles(
     mut commands: Commands,
     window: Query<&Window>,
     game_resources: Res<GameResources>,
@@ -195,7 +196,7 @@ fn spawn_obstales(
     }
 }
 
-fn cleanup_regions(
+pub fn cleanup_regions(
     camera_q: Query<&Transform, With<Camera>>,
     window: Query<&Window>,
     mut spawner_r: ResMut<ObstacleSpawner>,
@@ -220,7 +221,7 @@ fn reset_spawner(
     spawner_r.spawned_regions = HashSet::new();
 }
 
-fn update_collidables(
+pub fn update_collidables(
     mut collidables_q: Query<(&Transform, &mut Collidable)>
 ) {
     for (transform, mut collidable) in collidables_q.iter_mut() {
@@ -228,11 +229,11 @@ fn update_collidables(
     }
 }
 
-fn process_collisions_player(
+pub fn process_collisions_player(
     mut commands: Commands,
     game_resources: Res<GameResources>,
     mut player_q: Query<(Entity, &mut Sprite, &Collidable), (With<Player>, With<Alive>, Without<Obstacle>)>,
-    skis_q: Query<Entity, Or<(With<LeftSki>, With<RightSki>)>>,
+    mut skis_q: Query<&mut Visibility, Or<(With<LeftSki>, With<RightSki>)>>,
     mut obstacles_q: Query<&Collidable, (With<Obstacle>, Without<Player>)>
 ) {
     let Ok((entity, mut sprite, collidable_player)) = player_q.get_single_mut() else {
@@ -244,8 +245,8 @@ fn process_collisions_player(
     });
 
     if has_collided {
-        for ski_entity in &skis_q {
-            commands.entity(ski_entity).despawn_recursive();
+        for mut visibility in skis_q.iter_mut() {
+            *visibility = Visibility::Hidden;
         }
         commands.entity(entity).remove::<Alive>();
         commands.entity(entity).insert(Slowdown(Timer::from_seconds(FALL_TIMEOUT, TimerMode::Once)));
@@ -253,7 +254,7 @@ fn process_collisions_player(
     }
 }
 
-fn process_collisions_yeti(
+pub fn process_collisions_yeti(
     mut commands: Commands,
     game_resources: Res<GameResources>,
     mut yeti_q: Query<(Entity, &mut Animation, &Yeti, &Collidable), (With<Yeti>, With<Alive>, Without<Obstacle>, Without<Stun>)>,

@@ -21,7 +21,7 @@ const GAP_RANGE_X : (f32, f32) = (SPRITE_SIZE * SCALE_FACTOR * 2.5, SPRITE_SIZE 
 const GAP_RANGE_Y: (f32, f32) = (SPRITE_SIZE * SCALE_FACTOR * 4.0, SPRITE_SIZE * SCALE_FACTOR * 5.0);
 const POST_DISTANCE: f32 = SPRITE_SIZE * SCALE_FACTOR * 3.5;
 const FIRST_POST_DISTANCE: f32 = 7.0 * SPRITE_SIZE * SCALE_FACTOR;
-const HIT_DETECTION_OFFSET: (f32, f32) = (5.0, 0.0);
+const HIT_DETECTION_OFFSET: (f32, f32) = (10.0, 0.0);
 
 #[derive(Clone)]
 enum PostColor {
@@ -97,7 +97,6 @@ impl Plugin for PostsPlugin {
             );
     }
 }
-
 
 fn setup(
     mut spawner_r: ResMut<PostsSpawner>,
@@ -179,15 +178,15 @@ fn spawn_posts(
 fn detect_posts_hit(
     mut posts_ordered: ResMut<PostsOrder>,
     mut ev_posthit: EventWriter<PostHitEvent>,
-    mut player_q: Query<(&Transform, &mut Score), (With<Player>, With<Alive>)>,
+    mut player_q: Query<(&Transform, &mut Score), (With<Alive>, With<Player>)>,
 ) {
     let Ok((transform, mut score)) = player_q.get_single_mut() else {
         return;
     };
-
     let Some(post) = posts_ordered.posts.get(0) else {
         return;
     };
+
     if post.y + HIT_DETECTION_OFFSET.0 >= transform.translation.y &&
         post.y + HIT_DETECTION_OFFSET.1 <= transform.translation.y &&
         post.x_left <= transform.translation.x &&

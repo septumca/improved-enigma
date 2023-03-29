@@ -1,11 +1,11 @@
 use bevy::{prelude::*};
 
-use crate::{GameState, despawn, GameResources, player::{Player, Direction, RightSki, LeftSki, Speed}, Alive, NORMAL_BUTTON};
+use crate::{GameState, despawn, GameResources, player::{Player}, Alive, NORMAL_BUTTON};
 
 #[derive(Component)]
 struct UiControls;
 
-#[derive(Component)]
+#[derive(Component, Clone)]
 pub enum UiControlType {
     Left,
     Right,
@@ -22,66 +22,22 @@ impl Plugin for UiControlsPlugin {
     }
 }
 
-pub fn steer_player(
-    delta: f32,
-    control_type: &UiControlType,
-    game_resources: &GameResources,
-    sprite: &mut Sprite,
-    direction: &mut Direction,
-    speed: &Speed,
-    lski_transform: &mut Transform,
-    rski_transform: &mut Transform,
-) {
-    match control_type {
-        UiControlType::Left => direction.steer_left(delta, speed),
-        UiControlType::Right => direction.steer_right(delta, speed),
-    };
-
-    let (lski_y, rski_y) = direction.get_skis_transform_y();
-    lski_transform.translation.y = lski_y;
-    rski_transform.translation.y = rski_y;
-    lski_transform.rotation = Quat::from_rotation_z(direction.rotation);
-    rski_transform.rotation = Quat::from_rotation_z(direction.rotation);
-    let (sprite_rect, flip_x) = direction.get_graphics(&game_resources);
-    sprite.rect = Some(sprite_rect);
-    sprite.flip_x = flip_x;
-}
-
 fn controls_interaction(
-    timer: Res<Time>,
-    mut player_q: Query<(&mut Sprite, &mut Direction, &Speed), (With<Player>, With<Alive>)>,
-    mut left_ski: Query<&mut Transform, (With<LeftSki>, Without<RightSki>)>,
-    mut right_ski: Query<&mut Transform, (With<RightSki>, Without<LeftSki>)>,
-    game_resources: Res<GameResources>,
+    mut player_q: Query<&mut Player, With<Alive>>,
     interaction_query: Query<
         (&Interaction, &UiControlType),
         (With<Button>, With<UiControls>),
     >,
 ) {
-    let Ok((mut sprite, mut direction, speed)) = player_q.get_single_mut() else {
-        return;
-    };
-    let Ok(mut lski_transform) = left_ski.get_single_mut() else {
-        return;
-    };
-    let Ok(mut rski_transform) = right_ski.get_single_mut() else {
+    let Ok(mut player) = player_q.get_single_mut() else {
         return;
     };
 
+    player.control_type = None;
     for (interaction, uicontrol_type) in &interaction_query {
         match *interaction {
             Interaction::Clicked | Interaction::Hovered => {
-                let dt = timer.delta_seconds();
-                steer_player(
-                    dt,
-                    uicontrol_type,
-                    &game_resources,
-                    &mut sprite,
-                    &mut direction,
-                    speed,
-                    &mut lski_transform,
-                    &mut rski_transform
-                );
+                player.control_type = Some(uicontrol_type.clone());
             },
             _ => {}
         }

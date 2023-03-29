@@ -21,7 +21,7 @@ impl Plugin for StunPlugin {
     }
 }
 
-fn update_stun(
+pub fn update_stun(
     mut commands: Commands,
     timer: Res<Time>,
     mut stun_q: Query<(Entity, &Children, &mut Stun)>,

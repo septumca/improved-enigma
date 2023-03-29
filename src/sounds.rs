@@ -5,6 +5,8 @@ use crate::GameState;
 #[derive(Resource)]
 struct SoundsResource {
     post_hit: Handle<AudioSource>,
+    // scrape_1: Handle<AudioSource>,
+    // scrape_2: Handle<AudioSource>,
     sound_on: bool,
 }
 
@@ -28,7 +30,9 @@ fn setup(
     asset_server: Res<AssetServer>,
 ) {
     commands.insert_resource(SoundsResource {
-        post_hit: asset_server.load("Rise01.ogg"),
+        post_hit: asset_server.load("posthit.ogg"),
+        // scrape_1: asset_server.load("scrape-1.ogg"),
+        // scrape_2: asset_server.load("scrape-2.ogg"),
         sound_on: true,
     });
 }
