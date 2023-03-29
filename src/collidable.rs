@@ -8,9 +8,9 @@ pub struct Collidable {
     offset_x: f32,
     offset_y: f32,
     left: f32,
-    top: f32,
+    pub top: f32,
     right: f32,
-    bottom: f32,
+    pub bottom: f32,
 }
 
 impl Collidable {

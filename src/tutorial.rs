@@ -1,6 +1,6 @@
 use bevy::{prelude::*};
 
-use crate::{GameResources, despawn, GameState, RunningOs};
+use crate::{GameResources, despawn, GameState, uicontrols::{ControlScheme, ControlSchemeType}};
 
 #[derive(Component)]
 pub struct TutorialText;
@@ -17,7 +17,7 @@ impl Plugin for TutorialPlugin {
 
 fn setup(
     mut commands: Commands,
-    running_os: Res<RunningOs>,
+    control_scheme: Res<ControlScheme>,
     game_resources: Res<GameResources>,
 ) {
     let text_style = TextStyle {
@@ -26,10 +26,9 @@ fn setup(
         color: Color::BLACK,
     };
     let text_alignment = TextAlignment::Center;
-    let text = if !running_os.is_running_on_known_desktop {
-        "Press buttons\nto turn"
-    } else {
-        "Press A and D\nto turn"
+    let text = match control_scheme.kind {
+        ControlSchemeType::Desktop => "Press\nA or D\nto turn",
+        ControlSchemeType::Mobile => "Press\nbuttons\nto turn"
     };
     commands.spawn((
         Text2dBundle {

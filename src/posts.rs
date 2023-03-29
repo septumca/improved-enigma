@@ -14,14 +14,14 @@ use crate::{
     },
     cleanup,
     despawn,
-    SPRITE_SIZE, sounds::PostHitEvent
+    SPRITE_SIZE, sounds::PostHitEvent, collidable::{Collidable}
 };
 
 const GAP_RANGE_X : (f32, f32) = (SPRITE_SIZE * SCALE_FACTOR * 2.5, SPRITE_SIZE * SCALE_FACTOR * 6.0);
 const GAP_RANGE_Y: (f32, f32) = (SPRITE_SIZE * SCALE_FACTOR * 4.0, SPRITE_SIZE * SCALE_FACTOR * 5.0);
 const POST_DISTANCE: f32 = SPRITE_SIZE * SCALE_FACTOR * 3.5;
 const FIRST_POST_DISTANCE: f32 = 7.0 * SPRITE_SIZE * SCALE_FACTOR;
-const HIT_DETECTION_OFFSET: (f32, f32) = (10.0, 0.0);
+const HIT_DETECTION_OFFSET: f32 = 10.0;
 
 #[derive(Clone)]
 enum PostColor {
@@ -34,12 +34,6 @@ struct PostsSpawner {
     x: f32,
     y: f32,
     color: PostColor
-}
-
-
-#[derive(Resource)]
-struct PostsOrder {
-    posts: Vec<PostsData>,
 }
 
 impl Iterator for PostsSpawner {
@@ -65,15 +59,8 @@ impl Iterator for PostsSpawner {
 }
 
 
-#[derive(Clone)]
-struct PostsData {
-    x_left: f32,
-    x_right: f32,
-    y: f32,
-}
-
 #[derive(Component)]
-struct Posts;
+pub struct Posts;
 
 pub struct PostsPlugin;
 
@@ -82,9 +69,6 @@ impl Plugin for PostsPlugin {
         app
             .insert_resource(PostsSpawner {
                 x: 0.0, y: 0.0, color: PostColor::Blue
-            })
-            .insert_resource(PostsOrder {
-                posts: vec![]
             })
             .add_system(setup.after(player::setup).in_schedule(OnEnter(GameState::Playing)))
             .add_system(despawn::<Posts>.in_schedule(OnExit(GameState::GameOver)))
@@ -100,12 +84,10 @@ impl Plugin for PostsPlugin {
 
 fn setup(
     mut spawner_r: ResMut<PostsSpawner>,
-    mut posts_ordered: ResMut<PostsOrder>,
 ) {
     spawner_r.x = 0.0;
     spawner_r.y = 0.0;
     spawner_r.color = PostColor::Blue;
-    posts_ordered.posts = vec![];
 }
 
 fn spawn_posts(
@@ -113,7 +95,6 @@ fn spawn_posts(
     window: Query<&Window>,
     camera_q: Query<&Transform, With<Camera>>,
     game_resources: Res<GameResources>,
-    mut posts_ordered: ResMut<PostsOrder>,
     mut spawner_r: ResMut<PostsSpawner>,
 ) {
     let Ok(window) = window.get_single() else {
@@ -129,17 +110,13 @@ fn spawn_posts(
         return;
     };
 
-    posts_ordered.posts.push(PostsData {
-        x_left: x - POST_DISTANCE / 2.0,
-        x_right: x + POST_DISTANCE / 2.0,
-        y
-    });
     commands.spawn((
         SpatialBundle {
             transform: Transform::from_xyz(x, y, PLAYER_Z_INDEX + 1.1),
             ..default()
         },
         Alive,
+        Collidable::new(x, y, (POST_DISTANCE - 1.0) / 2.0, HIT_DETECTION_OFFSET / 2.0, 0.0, HIT_DETECTION_OFFSET / 2.0),
         Posts
     ))
     .with_children(|parent| {
@@ -175,42 +152,34 @@ fn spawn_posts(
     });
 }
 
-fn detect_posts_hit(
-    mut posts_ordered: ResMut<PostsOrder>,
+
+pub fn detect_posts_hit(
+    mut commands: Commands,
+    game_resources: Res<GameResources>,
     mut ev_posthit: EventWriter<PostHitEvent>,
-    mut player_q: Query<(&Transform, &mut Score), (With<Alive>, With<Player>)>,
+    mut player_q: Query<(&Transform, &Collidable, &mut Score), (With<Player>, With<Alive>, Without<Posts>)>,
+    posts_q: Query<(Entity, &Collidable), (With<Posts>, Without<Player>)>
 ) {
-    let Ok((transform, mut score)) = player_q.get_single_mut() else {
-        return;
-    };
-    let Some(post) = posts_ordered.posts.get(0) else {
+    let Ok((
+        transform_player,
+        collidable_player,
+        mut score
+    )) = player_q.get_single_mut() else {
         return;
     };
 
-    if post.y + HIT_DETECTION_OFFSET.0 >= transform.translation.y &&
-        post.y + HIT_DETECTION_OFFSET.1 <= transform.translation.y &&
-        post.x_left <= transform.translation.x &&
-        post.x_right >= transform.translation.x
-    {
-        // println!("HIT");
-        // println!("PLAYER: {}, {}", transform.translation.x, transform.translation.y);
-        // println!("POST Y: {}", post.y);
-        // println!("POST X: {}, {}", post.x_left, post.x_right);
-        score.increase();
-        posts_ordered.posts.remove(0);
-        ev_posthit.send(PostHitEvent);
+    for (entity, collidable) in posts_q.iter() {
+        if collidable.top < transform_player.translation.y - game_resources.sprite_size {
+            continue;
+        }
+
+        if collidable.intersect(collidable_player) {
+            score.increase();
+            ev_posthit.send(PostHitEvent);
+            commands.entity(entity).remove::<Collidable>();
+        } else if collidable.bottom - game_resources.sprite_size > transform_player.translation.y {
+            score.decrease();
+            commands.entity(entity).remove::<Collidable>();
+        }
     }
-
-    let Some(post) = posts_ordered.posts.get(0) else {
-        return;
-    };
-    if post.y + HIT_DETECTION_OFFSET.1 - 2.0 > transform.translation.y {
-        // println!("MISS");
-        // println!("PLAYER: {}, {}", transform.translation.x, transform.translation.y);
-        // println!("POST Y: {}", post.y);
-        // println!("POST X: {}, {}", post.x_left, post.x_right);
-        score.decrease();
-        posts_ordered.posts.remove(0);
-    }
-
 }

@@ -1,8 +1,9 @@
 use bevy::{prelude::*};
 
 #[derive(Resource)]
-struct MusicResource {
-    music_controller: Handle<AudioSink>,
+pub struct MusicResource {
+    pub controller: Handle<AudioSink>,
+    pub playing: bool
 }
 
 pub struct MusicPlugin;
@@ -28,18 +29,20 @@ fn setup(
     ));
 
     commands.insert_resource(MusicResource {
-        music_controller,
+        controller: music_controller,
+        playing: true,
     });
 }
 
 fn music_control(
-    music_resource: Res<MusicResource>,
+    mut music_resource: ResMut<MusicResource>,
     keyboard_input: Res<Input<KeyCode>>,
     audio_sinks: Res<Assets<AudioSink>>,
 ) {
     if keyboard_input.just_pressed(KeyCode::M) {
-        if let Some(sink) = audio_sinks.get(&music_resource.music_controller) {
+        if let Some(sink) = audio_sinks.get(&music_resource.controller) {
             sink.toggle();
+            music_resource.playing = !music_resource.playing;
         }
     }
 }

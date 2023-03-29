@@ -27,7 +27,7 @@ const STONE_COLLIDABLE_DIMENSIONS: (f32, f32) = (3.0 * SCALE_FACTOR, 2.0 * SCALE
 const STONE_COLLIDABLE_OFFSETS: (f32, f32) = (0.0 * SCALE_FACTOR, -1.0 * SCALE_FACTOR);
 const REGION_OFFSETS: [(isize, isize); 5] = [(-1, 0), (-1, -1), (0, -1), (1, -1), (1, 0)];
 const GAP_RANGE: (f32, f32) = (SPRITE_SIZE * SCALE_FACTOR * 1.0, SPRITE_SIZE * SCALE_FACTOR * 5.0);
-
+const DIFFICULTY_RAMPUP: f32 = 0.03;
 
 #[derive(Clone)]
 enum ObstacleType {
@@ -43,16 +43,76 @@ struct XYFillSpawner {
     y_gap: f32,
 }
 
-fn xy_walk_spawner(region_width: f32, region_height: f32) -> XYFillSpawner {
-    let mut rng = rand::thread_rng();
-    let y_gap = rng.gen_range(GAP_RANGE.0..GAP_RANGE.1);
-    let current_filled_y = y_gap * 2.0;
-    XYFillSpawner {
-        region_width,
-        region_height,
-        current_filled_x: rng.gen_range(GAP_RANGE.0..GAP_RANGE.1),
-        current_filled_y,
-        y_gap,
+impl XYFillSpawner {
+    fn new(region_width: f32, region_height: f32) -> Self {
+        let mut rng = rand::thread_rng();
+        let y_gap = rng.gen_range(GAP_RANGE.0..GAP_RANGE.1);
+        let current_filled_y = y_gap * 2.0;
+        Self {
+            region_width,
+            region_height,
+            current_filled_x: rng.gen_range(GAP_RANGE.0..GAP_RANGE.1),
+            current_filled_y,
+            y_gap,
+        }
+    }
+}
+
+struct TileSpawner {
+    tiles_count: usize,
+    width: usize,
+    act_tile: usize,
+    tile_size: f32,
+    spawn_offset: (f32, f32),
+    spawn_chance: f32
+}
+
+impl TileSpawner {
+    fn new(
+        tiles_count: usize,
+        width: usize,
+        tile_size: f32,
+        spawn_offset: (f32, f32),
+        spawn_chance: f32
+    ) -> Self {
+        Self {
+            tiles_count,
+            width,
+            act_tile: 0,
+            tile_size,
+            spawn_offset,
+            spawn_chance
+        }
+    }
+}
+
+impl Iterator for TileSpawner {
+    type Item = (ObstacleType, f32, f32);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut rng = rand::thread_rng();
+        let mut spawn_chance = rng.gen_range(0.0..1.0);
+
+        while spawn_chance > self.spawn_chance {
+            self.act_tile += 1;
+            if self.act_tile > self.tiles_count {
+                return None;
+            }
+            spawn_chance = rng.gen_range(0.0..1.0);
+        }
+        if self.act_tile > self.tiles_count {
+            return None;
+        }
+
+        // info!("SPAWNING {} from {}", self.act_tile, self.tiles_count);
+        let x = (self.act_tile % self.width) as f32 * self.tile_size + rng.gen_range(-self.spawn_offset.0..self.spawn_offset.0);
+        let y = (self.act_tile / self.width) as f32 * self.tile_size + rng.gen_range(-self.spawn_offset.1..self.spawn_offset.1);
+        let choices = [ObstacleType::Tree, ObstacleType::Stone];
+        let Some(obstacle_type) = choices.choose(&mut rng) else {
+            return None;
+        };
+        self.act_tile += 1;
+        Some((obstacle_type.clone(), x, y))
     }
 }
 
@@ -151,7 +211,17 @@ pub fn spawn_obstacles(
             continue;
         }
 
-        for (obstacle_type, ox, oy) in xy_walk_spawner(region_width, region_height) {
+        let tile_size = 60.0;
+        let height = (region_height / tile_size) as usize;
+        let width = (region_width / tile_size) as usize + 1;
+        let spawner = TileSpawner::new(
+            height * width,
+            width,
+            tile_size,
+            (15., 15.),
+            (camera_region_y.abs() as f32).log2() * DIFFICULTY_RAMPUP);
+        // let spawner = SpawnerType::XYGaps => XYFillSpawner::new(region_width, region_height);
+        for (obstacle_type, ox, oy) in spawner {
             let x = (rx as f32 - 0.5) * region_width + ox;
             let y = ry as f32 * region_height - oy;
 

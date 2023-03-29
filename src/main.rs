@@ -9,7 +9,6 @@ use gameover::GameOverPlugin;
 use menu::MenuPlugin;
 use music::MusicPlugin;
 use obstacle::ObstaclePlugin;
-use os_info::Type;
 use player::{PlayerPlugin};
 use posts::PostsPlugin;
 use sounds::{SoundPlugin, PostHitEvent};
@@ -44,14 +43,6 @@ TODO
     - pridat zvuky pre yetiho a lyze
 - collision detection
     - spravit spatial tree, pridat collidable do gridu a nasledne ich updatovat, pri collision detection nasledne cekovat len najblizsie tily
-- upravit pohyb
-    1. pri zmene rotacie sa postupne (de)akceleruje na aktualnu rychlost -> toto asi nebude nutne
-    2. po dosiahnuti nejakej vzialenosti e.g. 10000000, resetnut coordinaty na 0,0 -> parentov ziskat pomocou Without<Parent> selectoru
-- upravit spawnovanie
-    1. rozdelit priestor do vacsich gridov (e.g. 24x24)
-    2. spawnovat obstacles v ramci gridu s random offsetom
-    3. podobne aj s posts, vzdialenost bude v ramci policok
-     (resp. sa vie vypocitat do ktorych policok spadaju posty a tam sa nevyspawnuje ziadna obstacle)
 - yeti
     1. pridat AI aby sa vyhybal prekazkam
     2. pridat animaciu ako zozerie hraca
@@ -62,7 +53,8 @@ const SCREEN_WIDTH: f32 = 640.0;
 const SCREEN_HEIGHT: f32 = 480.0;
 pub const SPRITE_SIZE: f32 = 12.0;
 pub const SCALE_FACTOR: f32 = 4.0;
-const NORMAL_BUTTON: Color = Color::rgb(0.35, 0.75, 0.35);
+const SELECTED_BUTTON: Color = Color::rgb(0.35, 0.75, 0.35);
+const NORMAL_BUTTON: Color = Color::rgb(1.0, 1.0, 1.0);
 
 #[derive(Clone, Copy, Default, Eq, PartialEq, Debug, Hash, States)]
 pub enum GameState {
@@ -74,12 +66,9 @@ pub enum GameState {
 
 fn main() {
     let mut app = App::new();
-    let is_running_on_known_desktop = os_info::get().os_type() != Type::Unknown;
+
     app
         .add_event::<PostHitEvent>()
-        .insert_resource(RunningOs {
-            is_running_on_known_desktop
-        })
         .insert_resource(ClearColor(Color::rgb(0.95, 0.95, 1.0)))
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
@@ -116,12 +105,6 @@ fn main() {
 
 #[derive(Component)]
 pub struct Alive;
-
-#[derive(Resource)]
-pub struct RunningOs {
-    is_running_on_known_desktop: bool,
-}
-
 
 #[derive(Resource)]
 pub struct GameResources {

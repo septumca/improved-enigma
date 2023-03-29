@@ -1,6 +1,7 @@
 use bevy::{prelude::*};
+use os_info::Type;
 
-use crate::{GameState, despawn, GameResources, player::{Player}, Alive, NORMAL_BUTTON};
+use crate::{GameState, despawn, GameResources, player::{Player}, Alive, SELECTED_BUTTON};
 
 #[derive(Component)]
 pub struct UiControls;
@@ -11,11 +12,50 @@ pub enum UiControlType {
     Right,
 }
 
+#[derive(PartialEq)]
+pub enum ControlSchemeType {
+    Mobile,
+    Desktop,
+}
+
+#[derive(Resource)]
+pub struct  ControlScheme {
+    pub kind: ControlSchemeType,
+}
+
+impl ControlScheme {
+    pub fn set_mobile(&mut self) {
+        self.kind = ControlSchemeType::Mobile;
+    }
+
+    pub fn set_desktop(&mut self) {
+        self.kind = ControlSchemeType::Desktop;
+    }
+
+
+    pub fn is_mobile(&self) -> bool {
+        self.kind == ControlSchemeType::Mobile
+    }
+
+    pub fn is_desktop(&self) -> bool {
+        self.kind == ControlSchemeType::Desktop
+    }
+}
+
+
 pub struct UiControlsPlugin;
 
 impl Plugin for UiControlsPlugin {
     fn build(&self, app: &mut App) {
+        let control_scheme_kind = if os_info::get().os_type() == Type::Unknown {
+            ControlSchemeType::Mobile
+        } else {
+            ControlSchemeType::Desktop
+        };
         app
+            .insert_resource(ControlScheme {
+                kind: control_scheme_kind
+            })
             .add_system(setup_uicontrols.in_schedule(OnEnter(GameState::Playing)))
             .add_system(despawn::<UiControls>.in_schedule(OnExit(GameState::Playing)))
             .add_system(player_input.in_set(OnUpdate(GameState::Playing)));
@@ -56,7 +96,11 @@ fn setup_uicontrols(
     mut commands: Commands,
     window: Query<&Window>,
     game_resources: Res<GameResources>,
+    control_scheme: Res<ControlScheme>,
 ) {
+    if control_scheme.kind == ControlSchemeType::Desktop {
+        return;
+    }
     let text_style = TextStyle {
         font: game_resources.font_handle.clone(),
         font_size: 32.0,
@@ -80,7 +124,7 @@ fn setup_uicontrols(
                 },
                 ..default()
             },
-            background_color: NORMAL_BUTTON.into(),
+            background_color: SELECTED_BUTTON.into(),
             ..default()
         },
         UiControls,
@@ -107,7 +151,7 @@ fn setup_uicontrols(
                 },
                 ..default()
             },
-            background_color: NORMAL_BUTTON.into(),
+            background_color: SELECTED_BUTTON.into(),
             ..default()
         },
         UiControls,

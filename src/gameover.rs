@@ -5,6 +5,12 @@ use crate::{GameState, despawn, GameResources, NORMAL_BUTTON};
 #[derive(Component)]
 struct GameOverElement;
 
+#[derive(Component)]
+enum GameOverControl {
+    Restart,
+    MainMenu
+}
+
 pub struct GameOverPlugin;
 
 impl Plugin for GameOverPlugin {
@@ -18,15 +24,22 @@ impl Plugin for GameOverPlugin {
 
 fn controls_interaction(
     interaction_query: Query<
-        &Interaction,
+        (&Interaction, &GameOverControl),
         (Changed<Interaction>, With<Button>, With<GameOverElement>),
     >,
     mut app_state: ResMut<NextState<GameState>>,
 ) {
-    for interaction in &interaction_query {
+    for (interaction, control) in &interaction_query {
         match *interaction {
             Interaction::Clicked => {
-                app_state.set(GameState::Playing);
+                match control {
+                    GameOverControl::MainMenu => {
+                        app_state.set(GameState::MainMenu);
+                    },
+                    GameOverControl::Restart => {
+                        app_state.set(GameState::Playing);
+                    }
+                }
             },
             _ => {}
         }
@@ -93,10 +106,47 @@ fn setup_gameover(
             ..default()
         },
         GameOverElement,
+        GameOverControl::Restart,
     ))
     .with_children(|parent| {
         parent.spawn(TextBundle::from_section(
             "Restart",
+            text_style.clone(),
+        ));
+    });
+
+    commands.spawn((
+        ButtonBundle {
+            style: Style {
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                position_type: PositionType::Absolute,
+                position: UiRect {
+                    top: Val::Px(350.0),
+                    ..default()
+                },
+                margin: UiRect {
+                    left: Val::Auto,
+                    right: Val::Auto,
+                    ..default()
+                },
+                padding: UiRect {
+                    left: Val::Px(12.0),
+                    right: Val::Px(12.0),
+                    top: Val::Px(8.0),
+                    bottom: Val::Px(8.0)
+                },
+                ..default()
+            },
+            background_color: NORMAL_BUTTON.into(),
+            ..default()
+        },
+        GameOverElement,
+        GameOverControl::MainMenu,
+    ))
+    .with_children(|parent| {
+        parent.spawn(TextBundle::from_section(
+            "Main Menu",
             text_style.clone(),
         ));
     });
