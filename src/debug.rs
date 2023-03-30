@@ -1,15 +1,13 @@
-use std::time::Duration;
+use std::{time::Duration};
 
 use bevy::{prelude::*};
 
 use crate::{
     GameState,
     yeti::{
-        Yeti,
-        update_yeti,
         YetiSpawner,
-        YetiSpawnPhase, YetiAi
-    },
+        YetiSpawnPhase
+    }
 };
 
 #[derive(Component)]
@@ -34,45 +32,14 @@ impl Plugin for DebugPlugin {
             .add_systems(
                 (
                     spawn_debug_yeti,
-                    mouse_input.before(update_yeti),
-                    update_camera.after(update_yeti),
                 ).in_set(OnUpdate(GameState::Playing)));
     }
 }
 
-fn mouse_input(
-    mouse_button_input: Res<Input<MouseButton>>,
-    window: Query<&Window>,
-    camera_q: Query<(&Camera, &GlobalTransform)>,
-    mut yeti_q: Query<&mut Yeti, Without<Camera>>
-) {
-    let Ok(mut yeti) = yeti_q.get_single_mut() else {
-        return;
-    };
-    let Ok(window) = window.get_single() else {
-        return;
-    };
-    let Ok((camera, camera_transform)) = camera_q.get_single() else {
-        return;
-    };
-
-    if mouse_button_input.pressed(MouseButton::Left) {
-        let Some(mouse_position) = window.cursor_position()
-            .and_then(|cursor| camera.viewport_to_world(camera_transform, cursor))
-            .map(|ray| ray.origin.truncate()) else
-        {
-            return;
-        };
-
-        yeti.target_position = Some(mouse_position);
-    }
-}
 
 fn spawn_debug_yeti(
-    mut commands: Commands,
     debug_controls: Res<DebugControls>,
     mut yeti_spawner: ResMut<YetiSpawner>,
-    yeti_q: Query<Entity, (With<Yeti>, With<YetiAi>)>,
 ) {
     if !debug_controls.yeti_control {
         return;
@@ -85,31 +52,6 @@ fn spawn_debug_yeti(
         yeti_spawner.phase = phase_override;
         yeti_spawner.timer.set_elapsed(Duration::from_secs_f32(1000.));
     };
-    if let Ok(entity) = yeti_q.get_single() {
-        info!("removing yeti ai");
-        commands.entity(entity).remove::<YetiAi>();
-    }
-}
-
-fn update_camera(
-    debug_controls: Res<DebugControls>,
-    mut yeti_q: Query<(&Transform, &mut Yeti), Without<Camera>>,
-    mut camera_q: Query<&mut Transform, With<Camera>>
-) {
-    if !debug_controls.yeti_control {
-        return;
-    }
-    let Ok((yeti_transform, mut yeti)) = yeti_q.get_single_mut() else {
-        return;
-    };
-    if yeti.target_position.map_or(false, |p| p.distance_squared(yeti_transform.translation.truncate()) < 10.0) {
-        yeti.target_position = None;
-    }
-    let Ok(mut camera_transform) = camera_q.get_single_mut() else {
-        return;
-    };
-    camera_transform.translation.x = yeti_transform.translation.x;
-    camera_transform.translation.y = yeti_transform.translation.y;
 }
 
 fn debug_input(
@@ -130,5 +72,6 @@ fn debug_input(
 
     if keyboard_input.just_pressed(KeyCode::I) {
         debug_controls.yeti_control = !debug_controls.yeti_control;
+        info!("YETI CONTROL {}", debug_controls.yeti_control);
     }
 }

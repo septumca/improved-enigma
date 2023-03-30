@@ -5,15 +5,16 @@ use crate::{
     GameResources,
     Alive,
     GameState,
-    collidable::Collidable,
+    collidable::{Collidable, CollidableMovable},
     despawn,
     debug::{DebugMarker},
     SCALE_FACTOR,
-    uicontrols::{UiControlType, self}
+    uicontrols::{UiControlType, self}, stuneffect::Stun, camera::CameraFocus
 };
 
 
 const SPEED: f32 = 50.0 * SCALE_FACTOR;
+const ACCELERATION: f32 = 20.0 * SCALE_FACTOR;
 const PLAYER_COLLIDABLE_DIMENSIONS: (f32, f32) = (2.0 * SCALE_FACTOR, 2.0 * SCALE_FACTOR);
 const PLAYER_COLLIDABLE_OFFSETS: (f32, f32) = (0.0 * SCALE_FACTOR, -2.0 * SCALE_FACTOR);
 pub const FALL_TIMEOUT: f32 = 0.3;
@@ -23,104 +24,72 @@ pub const PLAYER_CAMERA_OFFSET: f32 = 32.0;
 const ROTATION_SPEED: f32 = FRAC_PI_2 * 1.5;
 const ROTATION_HINDERANCE: f32 = FRAC_PI_8 / 2.0; //at faster speed the turning is harder, this can be later upgraded to be closer to zero
 const SPRITE_ROTATION_TRESHOLD: f32 = FRAC_PI_8 / 2.0;
+const ROTATION_HINDERANCE_SLOPE: f32 = 15.0;
 
-#[derive(Debug, Component)]
-pub struct Direction {
-    pub rotation: f32
+
+fn get_graphics_index(rotation: f32) -> Option<usize> {
+    let angle = rotation.abs();
+    if angle <= SPRITE_ROTATION_TRESHOLD {
+        return None;
+    }
+    if angle > SPRITE_ROTATION_TRESHOLD && angle <= SPRITE_ROTATION_TRESHOLD * 3.0 {
+        return Some(0);
+    }
+    if angle > SPRITE_ROTATION_TRESHOLD * 3.0 && angle <= SPRITE_ROTATION_TRESHOLD * 5.0 {
+        return Some(1);
+    }
+    if angle > SPRITE_ROTATION_TRESHOLD * 5.0 && angle <= SPRITE_ROTATION_TRESHOLD * 7.0 {
+        return Some(2);
+    }
+    Some(SIDES_MAX_INDEX)
 }
 
-impl Direction {
-    pub fn get_graphics_index(&self) -> Option<usize> {
-        let angle = self.rotation.abs();
-        if angle <= SPRITE_ROTATION_TRESHOLD {
-            return None;
-        }
-        if angle > SPRITE_ROTATION_TRESHOLD && angle <= SPRITE_ROTATION_TRESHOLD * 3.0 {
-            return Some(0);
-        }
-        if angle > SPRITE_ROTATION_TRESHOLD * 3.0 && angle <= SPRITE_ROTATION_TRESHOLD * 5.0 {
-            return Some(1);
-        }
-        if angle > SPRITE_ROTATION_TRESHOLD * 5.0 && angle <= SPRITE_ROTATION_TRESHOLD * 7.0 {
-            return Some(2);
-        }
-        Some(SIDES_MAX_INDEX)
-    }
+fn is_facing_right(rotation: f32) -> bool {
+    rotation > 0.0 && rotation < PI
+}
 
-    pub fn is_facing_right(&self) -> bool {
-        self.rotation > 0.0 && self.rotation < PI
+fn get_graphics(rotation: f32, game_resources: &GameResources) -> (Rect, bool) {
+    if let Some(side_index) = get_graphics_index(rotation) {
+        return (game_resources.sides[side_index], !is_facing_right(rotation))
     }
+    (game_resources.down, false)
+}
 
-    pub fn get_graphics(&self, game_resources: &GameResources) -> (Rect, bool) {
-        if let Some(side_index) = self.get_graphics_index() {
-            return (game_resources.sides[side_index], !self.is_facing_right())
-        }
-        (game_resources.down, false)
+pub fn get_standing_position_offset(rotation: f32) -> Vec<(f32, f32)> {
+    let side_index = get_graphics_index(rotation);
+    match side_index {
+        None | Some(0) => vec![(-2.* SCALE_FACTOR, -1.* SCALE_FACTOR), (2.* SCALE_FACTOR, -1.* SCALE_FACTOR)],
+        Some(1) => vec![(-2.* SCALE_FACTOR, -2.* SCALE_FACTOR), (2.* SCALE_FACTOR, -2.* SCALE_FACTOR)],
+        Some(2) | Some(3) => vec![(-2.* SCALE_FACTOR, -3.* SCALE_FACTOR), (2.* SCALE_FACTOR, -3.* SCALE_FACTOR)],
+        _ => vec![]
     }
+}
 
-    fn get_rotation_hinderance(&self, speed: &Speed) -> f32 {
-        (speed.get_speed(self.rotation) - speed.min_speed) / (speed.max_speed - speed.min_speed) * ROTATION_HINDERANCE
-    }
-
-    pub fn update_rotation(&mut self, rotation: f32, delta: f32) {
-        self.rotation = (self.rotation + rotation * delta).max(-FRAC_PI_2).min(FRAC_PI_2)
-    }
-
-    pub fn steer_left(&mut self, speed: &Speed) -> f32 {
-        let rot_hinderance = self.get_rotation_hinderance(speed);
-        -(ROTATION_SPEED - rot_hinderance)
-    }
-
-    pub fn steer_right(&mut self, speed: &Speed) -> f32 {
-        let rot_hinderance = self.get_rotation_hinderance(speed);
-        ROTATION_SPEED - rot_hinderance
-    }
-
-    pub fn get_standing_position_offset(&self) -> Vec<(f32, f32)> {
-        let side_index = self.get_graphics_index();
-        match side_index {
-            None | Some(0) => vec![(-2.* SCALE_FACTOR, -1.* SCALE_FACTOR), (2.* SCALE_FACTOR, -1.* SCALE_FACTOR)],
-            Some(1) => vec![(-2.* SCALE_FACTOR, -2.* SCALE_FACTOR), (2.* SCALE_FACTOR, -2.* SCALE_FACTOR)],
-            Some(2) | Some(3) => vec![(-2.* SCALE_FACTOR, -3.* SCALE_FACTOR), (2.* SCALE_FACTOR, -3.* SCALE_FACTOR)],
-            _ => vec![]
-        }
-    }
-
-    pub fn get_skis_transform_y(&self) -> (f32, f32) {
-        match self.get_graphics_index() {
-            None | Some(0) => (-3.0 * SCALE_FACTOR, -3.0 * SCALE_FACTOR),
-            Some(_) => {
-                let lower = -3.0 * SCALE_FACTOR;
-                let upper = -2.0 * SCALE_FACTOR;
-                if self.is_facing_right() {
-                    (lower, upper)
-                } else {
-                    (upper, lower)
-                }
+fn get_skis_transform_y(rotation: f32) -> (f32, f32) {
+    match get_graphics_index(rotation) {
+        None | Some(0) => (-3.0 * SCALE_FACTOR, -3.0 * SCALE_FACTOR),
+        Some(_) => {
+            let lower = -3.0 * SCALE_FACTOR;
+            let upper = -2.0 * SCALE_FACTOR;
+            if is_facing_right(rotation) {
+                (lower, upper)
+            } else {
+                (upper, lower)
             }
         }
     }
 }
 
+fn get_rotation_hinderance(speed: f32) -> f32 {
+    (speed / (speed + ROTATION_HINDERANCE_SLOPE)) * ROTATION_HINDERANCE
+}
+
+#[derive(Debug, Component)]
+pub struct Rotation(pub f32);
 
 #[derive(Component)]
-pub struct Speed {
-    pub max_speed: f32,
-    min_speed: f32,
-}
+pub struct Velocity(pub Vec2);
 
-impl Speed {
-    pub fn new(max_speed: f32, min_speed_ratio: f32) -> Self {
-        Speed {
-            max_speed,
-            min_speed: max_speed * min_speed_ratio.min(0.95),
-        }
-    }
-
-    pub fn get_speed(&self, rotation: f32) -> f32 {
-        (self.max_speed - self.min_speed) * rotation.cos().abs() + self.min_speed
-    }
-}
 
 #[derive(Component)]
 pub struct Score {
@@ -139,12 +108,43 @@ impl Score {
 #[derive(Component)]
 pub struct Player {
     pub control_type: Option<UiControlType>,
+    speed: f32,
+    max_speed: f32,
+    min_speed: f32,
+    max_acceleration: f32,
 }
 
+impl Player {
+    pub fn new(max_speed: f32, min_speed_ratio: f32, max_acceleration: f32) -> Self {
+        Self {
+            control_type: None,
+            speed: 0.0,
+            max_speed,
+            min_speed: max_speed * min_speed_ratio.min(0.95),
+            max_acceleration,
+        }
+    }
+
+    pub fn get_speed(&self, rotation: f32) -> f32 {
+        (self.max_speed - self.min_speed) * rotation.cos().abs() + self.min_speed
+    }
+
+    pub fn get_acceleration(&self, rotation: f32) -> f32 {
+        self.max_acceleration * rotation.cos().abs()
+    }
+
+    pub fn deaccelerate(&mut self, rotation: f32) {
+        self.speed = self.get_speed(rotation);
+    }
+
+    pub fn accelerate(&mut self, rotation: f32, delta: f32) {
+        let act_acceleration = self.get_acceleration(rotation) * delta;
+        self.speed = (self.speed + act_acceleration).min(self.max_speed)
+    }
+}
 
 #[derive(Component)]
 pub struct Slowdown(pub Timer);
-
 
 #[derive(Component)]
 struct ScoreText;
@@ -175,6 +175,8 @@ impl Plugin for PlayerPlugin {
             .add_systems(
                 (
                     update_player.after(uicontrols::player_input),
+                    update_graphics.after(update_player),
+                    update_movables.after(update_player),
                     gameover_detection.after(update_player),
                     update_score_text,
                 ).in_set(OnUpdate(GameState::Playing))
@@ -182,46 +184,58 @@ impl Plugin for PlayerPlugin {
     }
 }
 
-fn steer_player(
-    delta: f32,
-    control_type: &UiControlType,
-    game_resources: &GameResources,
-    sprite: &mut Sprite,
-    direction: &mut Direction,
-    speed: &mut Speed,
-    lski_transform: &mut Transform,
-    rski_transform: &mut Transform,
-) {
-    let rot_delta = match control_type {
-        UiControlType::Left => direction.steer_left(speed),
-        UiControlType::Right => direction.steer_right(speed),
-    };
-    direction.update_rotation(rot_delta, delta);
-
-    let (lski_y, rski_y) = direction.get_skis_transform_y();
-    lski_transform.translation.y = lski_y;
-    rski_transform.translation.y = rski_y;
-    lski_transform.rotation = Quat::from_rotation_z(direction.rotation);
-    rski_transform.rotation = Quat::from_rotation_z(direction.rotation);
-    let (sprite_rect, flip_x) = direction.get_graphics(&game_resources);
-    sprite.rect = Some(sprite_rect);
-    sprite.flip_x = flip_x;
-}
-
 pub fn update_player(
     timer: Res<Time>,
+    mut player_q: Query<(&mut Velocity, &mut Rotation, &mut Player)>,
+) {
+    let Ok((
+        mut velocity,
+        mut rotation,
+        mut player
+    )) = player_q.get_single_mut() else {
+        return;
+    };
+
+    let dt = timer.delta();
+    if let Some(control_type) = &player.control_type {
+        let rot_hinderance = get_rotation_hinderance(player.speed);
+        let rot_delta = match control_type {
+            UiControlType::Left => -(ROTATION_SPEED - rot_hinderance),
+            UiControlType::Right => ROTATION_SPEED - rot_hinderance,
+        };
+        rotation.0 = (rotation.0 + rot_delta * dt.as_secs_f32())
+            .max(-FRAC_PI_2)
+            .min(FRAC_PI_2);
+        player.deaccelerate(rotation.0);
+    } else {
+        player.accelerate(rotation.0, dt.as_secs_f32());
+    }
+
+    player.control_type = None;
+    let act_rotation = rotation.0 - FRAC_PI_2; //0 degrees is pointing down (e.g. [0, -1], not to [1, 0])
+    velocity.0 = vec2(act_rotation.cos() * player.speed, act_rotation.sin() * player.speed);
+}
+
+pub fn update_movables(
+    timer: Res<Time>,
+    mut movables_q: Query<(&mut Transform, &Velocity), Without<Stun>>,
+) {
+    let dt = timer.delta();
+    for (mut transform, vel) in movables_q.iter_mut() {
+        transform.translation.x += vel.0.x * dt.as_secs_f32();
+        transform.translation.y += vel.0.y * dt.as_secs_f32();
+    }
+}
+
+fn update_graphics(
     game_resources: Res<GameResources>,
-    mut player_q: Query<(&mut Sprite, &mut Transform, &mut Speed, &mut Direction, &mut Player), (Without<LeftSki>, Without<RightSki>, Without<Camera>)>,
-    mut camera_q: Query<&mut Transform, With<Camera>>,
-    mut left_ski: Query<&mut Transform, (With<LeftSki>, Without<RightSki>, Without<Camera>)>,
-    mut right_ski: Query<&mut Transform, (With<RightSki>, Without<LeftSki>, Without<Camera>)>
+    mut player_q: Query<(&mut Sprite, &Rotation), (Without<LeftSki>, Without<RightSki>, With<Alive>)>,
+    mut left_ski: Query<&mut Transform, (With<LeftSki>, Without<RightSki>)>,
+    mut right_ski: Query<&mut Transform, (With<RightSki>, Without<LeftSki>)>
 ) {
     let Ok((
         mut sprite,
-        mut player_transform,
-        mut speed,
-        mut direction,
-        mut player
+        rotation,
     )) = player_q.get_single_mut() else {
         return;
     };
@@ -232,35 +246,16 @@ pub fn update_player(
         return;
     };
 
-    let dt = timer.delta();
-    if let Some(control_type) = &player.control_type {
-        steer_player(
-            dt.as_secs_f32(),
-            &control_type,
-            &game_resources,
-            &mut sprite,
-            &mut direction,
-            &mut speed,
-            &mut lski_transform,
-            &mut rski_transform
-        );
-    }
-
-    player.control_type = None;
-    let act_speed = speed.get_speed(direction.rotation);
-    let act_rotation = direction.rotation - FRAC_PI_2; //0 degrees is pointing down (e.g. [0, -1], not to [1, 0])
-    let dx = act_rotation.cos() * act_speed;
-    let dy = act_rotation.sin() * act_speed;
-
-    player_transform.translation.x += dx * dt.as_secs_f32();
-    player_transform.translation.y += dy * dt.as_secs_f32();
-
-    let Ok(mut camera_transform) = camera_q.get_single_mut() else {
-        return;
-    };
-    camera_transform.translation.x = player_transform.translation.x;
-    camera_transform.translation.y = player_transform.translation.y - PLAYER_CAMERA_OFFSET;
+    let (lski_y, rski_y) = get_skis_transform_y(rotation.0);
+    lski_transform.translation.y = lski_y;
+    rski_transform.translation.y = rski_y;
+    lski_transform.rotation = Quat::from_rotation_z(rotation.0);
+    rski_transform.rotation = Quat::from_rotation_z(rotation.0);
+    let (sprite_rect, flip_x) = get_graphics(rotation.0, &game_resources);
+    sprite.rect = Some(sprite_rect);
+    sprite.flip_x = flip_x;
 }
+
 
 fn update_score_text(
     player_q: Query<&Score, With<Player>>,
@@ -272,7 +267,6 @@ fn update_score_text(
     let Ok(mut text) = text_q.get_single_mut() else {
         return;
     };
-
     text.sections[0].value = format!("Score: {:.0}", score.value);
 }
 
@@ -319,19 +313,17 @@ pub fn setup(
             transform: Transform::from_xyz(0., 0., PLAYER_Z_INDEX),
             ..default()
         },
-        Player {
-            control_type: None,
-        },
+        CameraFocus,
+        Player::new(SPEED, 0.4, ACCELERATION),
         Alive,
+        Velocity(Vec2::ZERO),
+        CollidableMovable,
         Collidable::new(
             0., 0.,
             PLAYER_COLLIDABLE_DIMENSIONS.0, PLAYER_COLLIDABLE_DIMENSIONS.1,
             PLAYER_COLLIDABLE_OFFSETS.0, PLAYER_COLLIDABLE_OFFSETS.1
         ),
-        Speed::new(SPEED, 0.4),
-        Direction {
-            rotation: 0.0,
-        },
+        Rotation(0.0),
         Score { value: 0.0 }
     ))
     .with_children(|parent| {

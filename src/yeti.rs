@@ -1,15 +1,16 @@
-use std::{time::Duration, f32::consts::FRAC_PI_2};
+use std::{time::Duration, f32::consts::{FRAC_PI_2, FRAC_PI_8}};
 
 use bevy::{prelude::*, math::vec2};
 use rand::Rng;
 
-use crate::{despawn, GameState, player::{PLAYER_Z_INDEX, Player, PLAYER_CAMERA_OFFSET}, Alive, SCALE_FACTOR, GameResources, collidable::Collidable, debug::DebugMarker, animation::Animation, trail::Trail, stuneffect::{Stun, self}};
+use crate::{despawn, GameState, player::{PLAYER_Z_INDEX, Player, PLAYER_CAMERA_OFFSET, Velocity}, Alive, SCALE_FACTOR, GameResources, collidable::{Collidable, CollidableMovable}, debug::DebugMarker, animation::Animation, trail::Trail, stuneffect::{Stun, self}, obstacle::Obstacle};
 
-const SPEED: f32 = 45.0 * SCALE_FACTOR;
+const SPEED: f32 = 48.0 * SCALE_FACTOR;
 const YETI_COLLIDABLE_DIMENSIONS: (f32, f32) = (4.0 * SCALE_FACTOR, 3.0 * SCALE_FACTOR);
 const YETI_COLLIDABLE_OFFSETS: (f32, f32) = (0.0 * SCALE_FACTOR, -2.0 * SCALE_FACTOR);
-pub const YETI_STUN_TIME: f32 = 1.5;
+pub const YETI_STUN_TIME: f32 = 0.8;
 const YETI_SPAWNER_TIMEOUT: (f32, f32) = (30.0, 3.0);
+const RAY_LENGHT: f32 = 400.0;
 
 #[derive(Component)]
 pub enum YetiAi {
@@ -33,11 +34,13 @@ pub struct YetiSpawner {
 #[derive(Component)]
 pub struct Yeti {
     pub ignore_collisions: Timer,
-    pub target_position: Option<Vec2>,
-    speed: f32
+    pub speed: f32
 }
 
 pub struct YetiPlugin;
+
+#[derive(Component)]
+struct DebugYetiVelocity;
 
 impl Plugin for YetiPlugin {
     fn build(&self, app: &mut App) {
@@ -84,12 +87,16 @@ pub fn update_wake_up(
     }
 }
 
+
 fn yeti_ai(
-    mut yeti_q: Query<(&mut Yeti, &YetiAi), (Without<Player>, Without<Stun>)>,
+    obstacles_q: Query<&Collidable, (With<Obstacle>, Without<Yeti>)>,
+    mut yeti_q: Query<(&Transform, &Yeti, &mut Velocity, &YetiAi), (Without<Player>, Without<Stun>)>,
     player_q: Query<&Transform, (With<Player>, Without<Yeti>)>,
 ) {
     let Ok((
-        mut yeti,
+        transform,
+        yeti,
+        mut velocity,
         yeti_ai,
     )) = yeti_q.get_single_mut() else {
         return;
@@ -97,36 +104,77 @@ fn yeti_ai(
     let Ok(
         player_transform,
     ) = player_q.get_single() else {
-        yeti.target_position = None;
+        velocity.0 = Vec2::ZERO;
         return;
     };
 
     match yeti_ai {
         YetiAi::ChaseDirect => {
-            yeti.target_position = Some(player_transform.translation.truncate());
+            velocity.0 = (player_transform.translation.truncate() - transform.translation.truncate()).normalize() * yeti.speed;
         },
-        _ => {}
+        YetiAi::ChaseAvoidObstacles => {
+            let position = transform.translation.truncate();
+            let facing_vec = player_transform.translation.truncate() - position;
+            let rotation = facing_vec.y.atan2(facing_vec.x);
+            let ray_length = facing_vec.length().min(RAY_LENGHT);
+
+            for i in 0..16 {
+                let angle_offset = rotation + (FRAC_PI_8 / 2.0 * i as f32);
+                let angle_offset_neg = rotation - (FRAC_PI_8 / 2.0 * i as f32);
+                let ray = vec2(angle_offset.cos(), angle_offset.sin());
+                let ray_neg = vec2(angle_offset_neg.cos(), angle_offset_neg.sin());
+
+                let mut intersect = false;
+                let mut intersect_neg = false;
+                for collidable_obstacle in obstacles_q.iter() {
+                    if !intersect {
+                        if collidable_obstacle.intersect_line(
+                            position,
+                            position + ray * ray_length
+                        ).is_some() {
+                            intersect = true;
+                        };
+                    }
+                    if !intersect_neg {
+                        if collidable_obstacle.intersect_line(
+                            position,
+                            position + ray_neg * ray_length
+                        ).is_some() {
+                            intersect_neg = true;
+                        };
+                    }
+                    if intersect && intersect_neg {
+                        break;
+                    }
+                };
+                if !intersect {
+                    if i == 0 {
+                        println!("no correction necessary at angle {}", angle_offset);
+                    } else {
+                        println!("found angle {} at offset {}", angle_offset, i);
+                    }
+                    velocity.0 = ray * yeti.speed;
+                    return;
+                }
+                if !intersect_neg {
+                    println!("found negative angle {} at offset {}", angle_offset_neg, -i);
+                    velocity.0 = ray_neg * yeti.speed;
+                    return;
+                }
+            }
+        }
     };
 }
 
 pub fn update_yeti(
     timer: Res<Time>,
-    mut yeti_q: Query<(&mut Transform, &mut Yeti), (Without<Player>, Without<Stun>)>,
+    mut yeti_q: Query<&mut Yeti, Without<Stun>>,
 ) {
-    let Ok((
-        mut yeti_transform,
-        mut yeti,
-    )) = yeti_q.get_single_mut() else {
+    let Ok(mut yeti) = yeti_q.get_single_mut() else {
         return;
     };
     let dt = timer.delta();
     yeti.ignore_collisions.tick(dt);
-    let Some(target_position) = yeti.target_position else {
-        return;
-    };
-    let vel = (target_position - yeti_transform.translation.truncate()).normalize() * yeti.speed;
-    yeti_transform.translation.x += vel.x * dt.as_secs_f32();
-    yeti_transform.translation.y += vel.y * dt.as_secs_f32();
 }
 
 pub fn update_spawner(
@@ -176,6 +224,7 @@ pub fn update_spawner(
         YetiSpawnPhase::Spawning => {
             let x = camera_transform.translation.x + window.width() / 2.0;
             let y = camera_transform.translation.y + rng.gen_range(0.0..(window.height() / 2.0 - PLAYER_CAMERA_OFFSET));
+
             commands.spawn((
                 SpriteBundle {
                     sprite: Sprite {
@@ -187,12 +236,14 @@ pub fn update_spawner(
                     transform: Transform::from_xyz(x, y, PLAYER_Z_INDEX + 0.5),
                     ..default()
                 },
+                CollidableMovable,
                 Collidable::new(
                     0., 0.,
                     YETI_COLLIDABLE_DIMENSIONS.0, YETI_COLLIDABLE_DIMENSIONS.1,
                     YETI_COLLIDABLE_OFFSETS.0, YETI_COLLIDABLE_OFFSETS.1
                 ),
                 Alive,
+                Velocity(Vec2::ZERO),
                 Animation::new(vec![
                     game_resources.yeti_run[0],
                     game_resources.yeti_run[1],
@@ -200,8 +251,7 @@ pub fn update_spawner(
                     game_resources.yeti_run[2]
                 ], TimerMode::Repeating),
                 Yeti {
-                    ignore_collisions: Timer::from_seconds(0.5, TimerMode::Once),
-                    target_position: None,
+                    ignore_collisions: Timer::from_seconds(1.5, TimerMode::Once),
                     speed: SPEED
                 },
                 YetiAi::ChaseDirect,

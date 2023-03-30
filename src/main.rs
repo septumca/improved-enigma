@@ -4,6 +4,7 @@ use bevy::{prelude::*, window::WindowResolution};
 #[cfg(debug_assertions)]
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
 
+use camera::CameraPlugin;
 use debug::DebugPlugin;
 use gameover::GameOverPlugin;
 use menu::MenuPlugin;
@@ -12,6 +13,7 @@ use obstacle::ObstaclePlugin;
 use player::{PlayerPlugin};
 use posts::PostsPlugin;
 use sounds::{SoundPlugin, PostHitEvent};
+use spatialtree::SpatialTree;
 use stuneffect::StunPlugin;
 use trail::TrailPlugin;
 use tutorial::TutorialPlugin;
@@ -33,7 +35,8 @@ pub mod animation;
 pub mod stuneffect;
 pub mod music;
 pub mod sounds;
-
+pub mod spatialtree;
+pub mod camera;
 /*
 TODO
 - refactor
@@ -49,6 +52,7 @@ TODO
     3. pridat walking animaciu na strany
  */
 
+const SPATIAL_TILE_SIZE: f32 = 240.0;
 const SCREEN_WIDTH: f32 = 640.0;
 const SCREEN_HEIGHT: f32 = 480.0;
 pub const SPRITE_SIZE: f32 = 12.0;
@@ -78,6 +82,7 @@ fn main() {
             }),
             ..default()
         }).set(ImagePlugin::default_nearest()))
+        .insert_resource(SpatialTree::new(SPATIAL_TILE_SIZE))
         .add_state::<GameState>()
         .add_startup_system(setup)
         .add_plugin(MusicPlugin)
@@ -91,7 +96,8 @@ fn main() {
         .add_plugin(YetiPlugin)
         .add_plugin(AnimationPlugin)
         .add_plugin(StunPlugin)
-        .add_plugin(GameOverPlugin);
+        .add_plugin(GameOverPlugin)
+        .add_plugin(CameraPlugin);
 
     app.add_plugin(UiControlsPlugin);
     #[cfg(debug_assertions)]

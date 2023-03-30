@@ -1,6 +1,6 @@
 use bevy::{prelude::*, math::vec2};
 
-use crate::{despawn, GameState, player::{Player, Direction, PLAYER_Z_INDEX}, Alive, SCALE_FACTOR, cleanup, GameResources, yeti::{Yeti}, animation::Animation, stuneffect::Stun};
+use crate::{despawn, GameState, player::{Player, Rotation, PLAYER_Z_INDEX, get_standing_position_offset}, Alive, SCALE_FACTOR, cleanup, GameResources, yeti::{Yeti}, animation::Animation, stuneffect::Stun};
 
 
 const TRAIL_SIZE: (f32, f32) = (1.0 * SCALE_FACTOR, 1.0 * SCALE_FACTOR);
@@ -53,13 +53,13 @@ fn leave_trail_yeti(
 
 fn leave_trail_player(
     mut commands: Commands,
-    player_q: Query<(&Transform, &Direction), (Changed<Transform>, With<Player>, With<Alive>)>,
+    player_q: Query<(&Transform, &Rotation), (Changed<Transform>, With<Player>, With<Alive>)>,
 ) {
-    let Ok((transform, direction)) = player_q.get_single() else {
+    let Ok((transform, rotation)) = player_q.get_single() else {
         return;
     };
 
-    let offsets = direction.get_standing_position_offset();
+    let offsets = get_standing_position_offset(rotation.0);
 
     for (dx, dy) in offsets {
         commands.spawn((
