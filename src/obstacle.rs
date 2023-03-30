@@ -205,7 +205,7 @@ impl Plugin for ObstaclePlugin {
                     process_collisions_yeti.after(update_collidables),
                     cleanup::<Obstacle>,
                     cleanup_regions.after(spawn_obstacles),
-                    cleanup_spatial_tree,
+                    // cleanup_spatial_tree
                 ).in_set(OnUpdate(GameState::Playing))
             )
             ;
@@ -297,12 +297,12 @@ pub fn spawn_obstacles(
             }).id()
             ;
 
-            spatial_tree.insert(
-                x - game_resources.sprite_size / 2.,
-                y + game_resources.sprite_size / 2.0,
-                game_resources.sprite_size,
-                entity
-            );
+            // spatial_tree.insert(
+            //     x - game_resources.sprite_size / 2.,
+            //     y + game_resources.sprite_size / 2.0,
+            //     game_resources.sprite_size,
+            //     entity
+            // );
         }
         spawner_r.spawned_regions.insert((rx, ry));
     }
@@ -353,10 +353,13 @@ pub fn process_collisions_player(
         return;
     };
 
-    let has_collided = spatial_tree.get_at(transform.translation.x, transform.translation.y, SPATIAL_TREE_SEARCH_RADIUS).iter().any(|&obstacle_e| {
-        let Ok(collidable_obstacle) = obstacles_q.get(obstacle_e) else {
-            return false;
-        };
+    // let has_collided = spatial_tree.get_at(transform.translation.x, transform.translation.y, SPATIAL_TREE_SEARCH_RADIUS).iter().any(|&obstacle_e| {
+    //     let Ok(collidable_obstacle) = obstacles_q.get(obstacle_e) else {
+    //         return false;
+    //     };
+    //     collidable_obstacle.intersect(&collidable_player)
+    // });
+    let has_collided = obstacles_q.iter().any(|collidable_obstacle| {
         collidable_obstacle.intersect(&collidable_player)
     });
 
@@ -390,15 +393,15 @@ pub fn process_collisions_yeti(
     if !yeti.ignore_collisions.finished() {
         return;
     }
-    let has_collided = spatial_tree.get_at(transform.translation.x, transform.translation.y, SPATIAL_TREE_SEARCH_RADIUS).iter().any(|&obstacle_e| {
-        let Ok(collidable_obstacle) = obstacles_q.get(obstacle_e) else {
-            return false;
-        };
-        collidable_obstacle.intersect(&collidable_yeti)
-    });
-    // let has_collided_obstacle = obstacles_q.iter_mut().any(|collidable_obstacle| {
+    // let has_collided = spatial_tree.get_at(transform.translation.x, transform.translation.y, SPATIAL_TREE_SEARCH_RADIUS).iter().any(|&obstacle_e| {
+    //     let Ok(collidable_obstacle) = obstacles_q.get(obstacle_e) else {
+    //         return false;
+    //     };
     //     collidable_obstacle.intersect(&collidable_yeti)
     // });
+    let has_collided = obstacles_q.iter().any(|collidable_obstacle| {
+        collidable_obstacle.intersect(&collidable_yeti)
+    });
     if has_collided {
         animation.set_frames(vec![game_resources.yeti_fallen]);
         let stun_child = commands.spawn((
@@ -442,5 +445,5 @@ pub fn cleanup_spatial_tree(
         return;
     };
 
-    spatial_tree.cleanup_y(transform.translation.y + 1000.0);
+    // spatial_tree.cleanup_y(transform.translation.y + 1000.0);
 }
