@@ -1,6 +1,6 @@
 use bevy::{prelude::*};
 
-use crate::{GameState, GameResources, despawn, SELECTED_BUTTON, music::MusicResource, uicontrols::ControlScheme, NORMAL_BUTTON};
+use crate::{GameState, GameResources, despawn, SELECTED_BUTTON, music::MusicResource, uicontrols::ControlScheme, NORMAL_BUTTON, level_generator::LevelGeneratorSettings};
 
 
 pub struct MenuPlugin;
@@ -65,6 +65,7 @@ fn controls_interaction(
         (&Interaction, &MainMenuItem),
         (Changed<Interaction>, With<Button>),
     >,
+    mut commands: Commands,
     mut app_state: ResMut<NextState<GameState>>,
     mut music_resource: ResMut<MusicResource>,
     mut control_scheme: ResMut<ControlScheme>,
@@ -76,6 +77,14 @@ fn controls_interaction(
             Interaction::Clicked => {
                 match menu_item {
                     MainMenuItem::Play => {
+                        commands.insert_resource(LevelGeneratorSettings {
+                            tile_size: 120.0,
+                            displacement: 30.0,
+                            start_offset_y: -350.0,
+                            width: 50,
+                            height: 400,
+                            starting_difficulty: 0.3
+                        });
                         app_state.set(GameState::Playing);
                     },
                     MainMenuItem::MusicOn => {
@@ -113,11 +122,16 @@ fn get_button_color(toggle: bool) -> BackgroundColor {
 }
 
 fn setup(
+    window: Query<&Window>,
     mut commands: Commands,
     game_resources: Res<GameResources>,
     music_resource: Res<MusicResource>,
     control_scheme: Res<ControlScheme>,
 ) {
+    let Ok(window) = window.get_single() else {
+        return;
+    };
+
     let text_style = TextStyle {
         font: game_resources.font_handle.clone(),
         font_size: 24.0,
@@ -129,7 +143,10 @@ fn setup(
         .spawn((
             NodeBundle {
                 style: Style {
-                    size: Size::all(Val::Percent(100.)),
+                    size: Size {
+                        width: Val::Px(window.width()),
+                        height: Val::Px(window.height()),
+                    },
                     flex_direction: FlexDirection::Column,
                     align_items: AlignItems::Center,
                     ..Default::default()

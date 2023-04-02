@@ -17,23 +17,31 @@ use crate::{
     SPRITE_SIZE, sounds::PostHitEvent, collidable::{Collidable}
 };
 
-const GAP_RANGE_X : (f32, f32) = (SPRITE_SIZE * SCALE_FACTOR * 2.5, SPRITE_SIZE * SCALE_FACTOR * 6.0);
-const GAP_RANGE_Y: (f32, f32) = (SPRITE_SIZE * SCALE_FACTOR * 4.0, SPRITE_SIZE * SCALE_FACTOR * 5.0);
-const POST_DISTANCE: f32 = SPRITE_SIZE * SCALE_FACTOR * 3.5;
+pub const GAP_RANGE_X : (f32, f32) = (SPRITE_SIZE * SCALE_FACTOR * 2.5, SPRITE_SIZE * SCALE_FACTOR * 6.0);
+pub const GAP_RANGE_Y: (f32, f32) = (SPRITE_SIZE * SCALE_FACTOR * 4.0, SPRITE_SIZE * SCALE_FACTOR * 5.0);
+pub const POST_DISTANCE: f32 = SPRITE_SIZE * SCALE_FACTOR * 3.5;
 const FIRST_POST_DISTANCE: f32 = 7.0 * SPRITE_SIZE * SCALE_FACTOR;
-const HIT_DETECTION_OFFSET: f32 = 10.0;
+pub const HIT_DETECTION_OFFSET: f32 = 10.0;
 
 #[derive(Clone)]
-enum PostColor {
+pub enum PostColor {
     Blue,
     Red,
 }
 
 #[derive(Resource)]
-struct PostsSpawner {
+pub struct PostsSpawner {
     x: f32,
-    y: f32,
+    pub y: f32,
     color: PostColor
+}
+
+impl PostsSpawner {
+    pub fn new() -> Self {
+        Self {
+            x: 0.0, y: 0.0, color: PostColor::Blue
+        }
+    }
 }
 
 impl Iterator for PostsSpawner {
@@ -67,9 +75,9 @@ pub struct PostsPlugin;
 impl Plugin for PostsPlugin {
     fn build(&self, app: &mut App) {
         app
-            .insert_resource(PostsSpawner {
-                x: 0.0, y: 0.0, color: PostColor::Blue
-            })
+            // .insert_resource(PostsSpawner {
+            //     x: 0.0, y: 0.0, color: PostColor::Blue
+            // })
             .add_system(setup.after(player::setup).in_schedule(OnEnter(GameState::Playing)))
             .add_system(despawn::<Posts>.in_schedule(OnExit(GameState::GameOver)))
             .add_systems(
@@ -83,8 +91,11 @@ impl Plugin for PostsPlugin {
 }
 
 fn setup(
-    mut spawner_r: ResMut<PostsSpawner>,
+    spawner_r: Option<ResMut<PostsSpawner>>,
 ) {
+    let Some(mut spawner_r) = spawner_r else {
+        return;
+    };
     spawner_r.x = 0.0;
     spawner_r.y = 0.0;
     spawner_r.color = PostColor::Blue;
@@ -95,8 +106,11 @@ fn spawn_posts(
     window: Query<&Window>,
     camera_q: Query<&Transform, With<Camera>>,
     game_resources: Res<GameResources>,
-    mut spawner_r: ResMut<PostsSpawner>,
+    spawner_r: Option<ResMut<PostsSpawner>>,
 ) {
+    let Some(mut spawner_r) = spawner_r else {
+        return;
+    };
     let Ok(window) = window.get_single() else {
         return;
     };
@@ -174,11 +188,10 @@ pub fn detect_posts_hit(
         }
 
         if collidable.intersect(collidable_player) {
-            score.increase();
             ev_posthit.send(PostHitEvent);
             commands.entity(entity).remove::<Collidable>();
         } else if collidable.bottom - game_resources.sprite_size > transform_player.translation.y {
-            score.decrease();
+            score.increase();
             commands.entity(entity).remove::<Collidable>();
         }
     }

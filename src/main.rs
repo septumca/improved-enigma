@@ -6,7 +6,9 @@ use bevy_inspector_egui::quick::WorldInspectorPlugin;
 
 use camera::CameraPlugin;
 use debug::DebugPlugin;
+use finish::FinishPlugin;
 use gameover::GameOverPlugin;
+use level_generator::LevelGeneratorPlugin;
 use menu::MenuPlugin;
 use music::MusicPlugin;
 use obstacle::ObstaclePlugin;
@@ -37,15 +39,14 @@ pub mod music;
 pub mod sounds;
 pub mod spatialtree;
 pub mod camera;
+pub mod level_generator;
+pub mod finish;
 /*
 TODO
-- refactor
-    1. componenty v samostatnom subore
-    2. systemy v samostatnych suboroch, lepsie rozdelit podla funkcie?
 - sound
     - pridat zvuky pre yetiho a lyze
 - collision detection
-    - spravit spatial tree, pridat collidable do gridu a nasledne ich updatovat, pri collision detection nasledne cekovat len najblizsie tily
+    - spravit spatial tree
 - yeti
     1. pridat AI aby sa vyhybal prekazkam
     2. pridat animaciu ako zozerie hraca
@@ -97,7 +98,9 @@ fn main() {
         .add_plugin(AnimationPlugin)
         .add_plugin(StunPlugin)
         .add_plugin(GameOverPlugin)
-        .add_plugin(CameraPlugin);
+        .add_plugin(CameraPlugin)
+        .add_plugin(LevelGeneratorPlugin)
+        .add_plugin(FinishPlugin);
 
     app.add_plugin(UiControlsPlugin);
     #[cfg(debug_assertions)]

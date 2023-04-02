@@ -1,6 +1,6 @@
 use bevy::{prelude::*};
 
-use crate::{GameState, despawn, GameResources, NORMAL_BUTTON};
+use crate::{GameState, despawn, GameResources, NORMAL_BUTTON, player::{CompletedRace, Player}};
 
 #[derive(Component)]
 struct GameOverElement;
@@ -49,6 +49,7 @@ fn controls_interaction(
 fn setup_gameover(
     mut commands: Commands,
     game_resources: Res<GameResources>,
+    player_q: Query<Option<&CompletedRace>, With<Player>>,
 ) {
     let text_style = TextStyle {
         font: game_resources.font_handle.clone(),
@@ -56,10 +57,16 @@ fn setup_gameover(
         color: Color::BLACK,
     };
     let text_alignment = TextAlignment::Center;
+    let mut text = "Game Over";
+    if let Ok(completed) = player_q.get_single() {
+        if completed.is_some() {
+            text = "Race finished !"
+        }
+    }
 
     commands.spawn((
         TextBundle::from_section(
-            "Game Over",
+            text,
             text_style.clone(),
         )
         .with_text_alignment(text_alignment)

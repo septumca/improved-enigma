@@ -11,30 +11,30 @@ use crate::{
     GameResources,
     player::{
         Player,
-        Slowdown,
+        Falldown,
         FALL_TIMEOUT,
-        PLAYER_Z_INDEX, LeftSki, RightSki, self, Catched
+        PLAYER_Z_INDEX, LeftSki, RightSki, self, Catched, Slowdown
     },
     cleanup,
     despawn,
     debug::DebugMarker,
-    SPRITE_SIZE, yeti::{Yeti, YETI_STUN_TIME}, animation::{Animation, AnimateRotation}, stuneffect::{Stun, StunEffect}, spatialtree::{SpatialTree, SPATIAL_TREE_SEARCH_RADIUS}
+    SPRITE_SIZE, yeti::{Yeti, YETI_STUN_TIME}, animation::{Animation, AnimateRotation}, stuneffect::{Stun, StunEffect}
 };
 
-const TREE_COLLIDABLE_DIMENSIONS: (f32, f32) = (2.0 * SCALE_FACTOR, 2.0 * SCALE_FACTOR);
-const TREE_COLLIDABLE_OFFSETS: (f32, f32) = (0.0 * SCALE_FACTOR, -2.0 * SCALE_FACTOR);
-const STONE_COLLIDABLE_DIMENSIONS: (f32, f32) = (3.0 * SCALE_FACTOR, 2.0 * SCALE_FACTOR);
-const STONE_COLLIDABLE_OFFSETS: (f32, f32) = (0.0 * SCALE_FACTOR, -1.0 * SCALE_FACTOR);
-const REGION_OFFSETS: [(isize, isize); 5] = [
+pub const TREE_COLLIDABLE_DIMENSIONS: (f32, f32) = (2.0 * SCALE_FACTOR, 2.0 * SCALE_FACTOR);
+pub const TREE_COLLIDABLE_OFFSETS: (f32, f32) = (0.0 * SCALE_FACTOR, -2.0 * SCALE_FACTOR);
+pub const STONE_COLLIDABLE_DIMENSIONS: (f32, f32) = (3.0 * SCALE_FACTOR, 2.0 * SCALE_FACTOR);
+pub const STONE_COLLIDABLE_OFFSETS: (f32, f32) = (0.0 * SCALE_FACTOR, -1.0 * SCALE_FACTOR);
+pub const REGION_OFFSETS: [(isize, isize); 5] = [
     (-1, 0), (-1, -1),
     (0, -1),
     (1, -1), (1, 0)
 ];
-const GAP_RANGE: (f32, f32) = (SPRITE_SIZE * SCALE_FACTOR * 1.0, SPRITE_SIZE * SCALE_FACTOR * 5.0);
-const DIFFICULTY_RAMPUP: f32 = 0.03;
+pub const GAP_RANGE: (f32, f32) = (SPRITE_SIZE * SCALE_FACTOR * 1.0, SPRITE_SIZE * SCALE_FACTOR * 5.0);
+pub const DIFFICULTY_RAMPUP: f32 = 0.03;
 
 #[derive(Clone)]
-enum ObstacleType {
+pub enum ObstacleType {
     Stone,
     Tree,
 }
@@ -190,11 +190,11 @@ pub struct ObstaclePlugin;
 impl Plugin for ObstaclePlugin {
     fn build(&self, app: &mut App) {
         app
-            .insert_resource(ObstacleSpawner {
-                last_processed_player_region_y: None,
-                last_processed_player_region_x: None,
-                spawned_regions: HashSet::new(),
-            })
+            // .insert_resource(ObstacleSpawner {
+            //     last_processed_player_region_y: None,
+            //     last_processed_player_region_x: None,
+            //     spawned_regions: HashSet::new(),
+            // })
             .add_system(despawn::<Obstacle>.in_schedule(OnExit(GameState::GameOver)))
             .add_system(reset_spawner.in_schedule(OnExit(GameState::GameOver)))
             .add_systems(
@@ -217,16 +217,19 @@ pub fn spawn_obstacles(
     mut commands: Commands,
     window: Query<&Window>,
     game_resources: Res<GameResources>,
-    mut spatial_tree: ResMut<SpatialTree>,
     camera_q: Query<&Transform, With<Camera>>,
-    mut spawner_r: ResMut<ObstacleSpawner>,
+    spawner_r: Option<ResMut<ObstacleSpawner>>,
 ) {
+    let Some(mut spawner_r) = spawner_r else {
+        return;
+    };
     let Ok(window) = window.get_single() else {
         return;
     };
     let Ok(transform) = camera_q.get_single() else {
         return;
     };
+    info!("SPAWNING");
     let region_width = window.width();
     let region_height = window.height();
     let camera_region_x = (transform.translation.x / region_width).floor() as isize;
@@ -265,7 +268,7 @@ pub fn spawn_obstacles(
                 ObstacleType::Stone => (game_resources.stone, STONE_COLLIDABLE_DIMENSIONS, STONE_COLLIDABLE_OFFSETS, 0.1)
             };
 
-            let entity = commands.spawn((
+            commands.spawn((
                 SpriteBundle {
                     sprite: Sprite {
                         custom_size: Some(vec2(game_resources.sprite_size, game_resources.sprite_size)),
@@ -294,15 +297,8 @@ pub fn spawn_obstacles(
                     },
                     DebugMarker
                 ));
-            }).id()
+            })
             ;
-
-            // spatial_tree.insert(
-            //     x - game_resources.sprite_size / 2.,
-            //     y + game_resources.sprite_size / 2.0,
-            //     game_resources.sprite_size,
-            //     entity
-            // );
         }
         spawner_r.spawned_regions.insert((rx, ry));
     }
@@ -311,8 +307,11 @@ pub fn spawn_obstacles(
 pub fn cleanup_regions(
     camera_q: Query<&Transform, With<Camera>>,
     window: Query<&Window>,
-    mut spawner_r: ResMut<ObstacleSpawner>,
+    spawner_r: Option<ResMut<ObstacleSpawner>>,
 ) {
+    let Some(mut spawner_r) = spawner_r else {
+        return;
+    };
     let Ok(transform) = camera_q.get_single() else {
         return;
     };
@@ -326,8 +325,11 @@ pub fn cleanup_regions(
 }
 
 fn reset_spawner(
-    mut spawner_r: ResMut<ObstacleSpawner>,
+    spawner_r: Option<ResMut<ObstacleSpawner>>
 ) {
+    let Some(mut spawner_r) = spawner_r else {
+        return;
+    };
     spawner_r.last_processed_player_region_y = None;
     spawner_r.last_processed_player_region_x = None;
     spawner_r.spawned_regions = HashSet::new();
@@ -344,31 +346,30 @@ pub fn update_collidables(
 pub fn process_collisions_player(
     mut commands: Commands,
     game_resources: Res<GameResources>,
-    spatial_tree: Res<SpatialTree>,
-    mut player_q: Query<(Entity, &Transform, &mut Sprite, &Collidable), (With<Player>, With<Alive>, Without<Obstacle>)>,
+    mut player_q: Query<(Entity, &mut Sprite, &Collidable, &Children), (With<Player>, With<Alive>, Without<Obstacle>)>,
     mut skis_q: Query<&mut Visibility, Or<(With<LeftSki>, With<RightSki>)>>,
     obstacles_q: Query<&Collidable, (With<Obstacle>, Without<Player>)>
 ) {
-    let Ok((entity, transform, mut sprite, collidable_player)) = player_q.get_single_mut() else {
+    let Ok((
+        entity,
+        mut sprite,
+        collidable_player,
+        children
+    )) = player_q.get_single_mut() else {
         return;
     };
-
-    // let has_collided = spatial_tree.get_at(transform.translation.x, transform.translation.y, SPATIAL_TREE_SEARCH_RADIUS).iter().any(|&obstacle_e| {
-    //     let Ok(collidable_obstacle) = obstacles_q.get(obstacle_e) else {
-    //         return false;
-    //     };
-    //     collidable_obstacle.intersect(&collidable_player)
-    // });
     let has_collided = obstacles_q.iter().any(|collidable_obstacle| {
         collidable_obstacle.intersect(&collidable_player)
     });
 
     if has_collided {
-        for mut visibility in skis_q.iter_mut() {
-            *visibility = Visibility::Hidden;
+        for &ch in children {
+            if let Ok(mut visibility) = skis_q.get_mut(ch) {
+                *visibility = Visibility::Hidden;
+            }
         }
-        commands.entity(entity).remove::<Alive>();
         commands.entity(entity).insert(Slowdown(Timer::from_seconds(FALL_TIMEOUT, TimerMode::Once)));
+        commands.entity(entity).insert(Falldown);
         sprite.rect = Some(game_resources.fall_down);
     }
 }
@@ -376,14 +377,12 @@ pub fn process_collisions_player(
 pub fn process_collisions_yeti(
     mut commands: Commands,
     game_resources: Res<GameResources>,
-    mut yeti_q: Query<(Entity, &Transform, &mut Animation, &Yeti, &Collidable), (With<Yeti>, With<Alive>, Without<Obstacle>, Without<Stun>)>,
+    mut yeti_q: Query<(Entity, &mut Animation, &Yeti, &Collidable), (With<Yeti>, With<Alive>, Without<Obstacle>, Without<Stun>)>,
     player_q: Query<(Entity, &Collidable), (With<Player>, With<Alive>, Without<Obstacle>, Without<Yeti>)>,
     obstacles_q: Query<&Collidable, (With<Obstacle>, Without<Yeti>)>,
-    spatial_tree: Res<SpatialTree>,
 ) {
     let Ok((
         entity_yeti,
-        transform,
         mut animation,
         yeti,
         collidable_yeti
@@ -393,12 +392,6 @@ pub fn process_collisions_yeti(
     if !yeti.ignore_collisions.finished() {
         return;
     }
-    // let has_collided = spatial_tree.get_at(transform.translation.x, transform.translation.y, SPATIAL_TREE_SEARCH_RADIUS).iter().any(|&obstacle_e| {
-    //     let Ok(collidable_obstacle) = obstacles_q.get(obstacle_e) else {
-    //         return false;
-    //     };
-    //     collidable_obstacle.intersect(&collidable_yeti)
-    // });
     let has_collided = obstacles_q.iter().any(|collidable_obstacle| {
         collidable_obstacle.intersect(&collidable_yeti)
     });
@@ -435,15 +428,4 @@ pub fn process_collisions_yeti(
         commands.entity(entity_player).remove::<Alive>();
         commands.entity(entity_player).insert(Catched);
     }
-}
-
-pub fn cleanup_spatial_tree(
-    mut spatial_tree: ResMut<SpatialTree>,
-    camera_q: Query<&Transform, With<Camera>>,
-) {
-    let Ok(transform) = camera_q.get_single() else {
-        return;
-    };
-
-    // spatial_tree.cleanup_y(transform.translation.y + 1000.0);
 }

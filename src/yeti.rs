@@ -3,7 +3,7 @@ use std::{time::Duration, f32::consts::{FRAC_PI_2, FRAC_PI_8}};
 use bevy::{prelude::*, math::vec2};
 use rand::Rng;
 
-use crate::{despawn, GameState, player::{PLAYER_Z_INDEX, Player, PLAYER_CAMERA_OFFSET, Velocity}, Alive, SCALE_FACTOR, GameResources, collidable::{Collidable, CollidableMovable}, debug::DebugMarker, animation::Animation, trail::Trail, stuneffect::{Stun, self}, obstacle::Obstacle};
+use crate::{despawn, GameState, player::{PLAYER_Z_INDEX, Player, PLAYER_CAMERA_OFFSET, Velocity}, Alive, SCALE_FACTOR, GameResources, collidable::{Collidable, CollidableMovable}, debug::DebugMarker, animation::Animation, trail::Trail, stuneffect::{Stun}, obstacle::Obstacle};
 
 const SPEED: f32 = 48.0 * SCALE_FACTOR;
 const YETI_COLLIDABLE_DIMENSIONS: (f32, f32) = (4.0 * SCALE_FACTOR, 3.0 * SCALE_FACTOR);
@@ -54,36 +54,12 @@ impl Plugin for YetiPlugin {
                     update_spawner,
                     yeti_ai,
                     update_yeti.after(yeti_ai),
-                    update_wake_up.after(stuneffect::update_stun),
                 ).in_set(OnUpdate(GameState::Playing)))
             .add_systems(
                 (
                     despawn::<Yeti>,
                     reset_spawner
-                ).in_schedule(OnEnter(GameState::Playing)));
-    }
-}
-
-pub fn update_wake_up(
-    game_resources: Res<GameResources>,
-    mut woken_up: RemovedComponents<Stun>,
-    mut yeti_q: Query<(&mut Sprite, &mut Animation, &mut Yeti), With<Alive>>,
-) {
-    for entity_woken in woken_up.iter() {
-        let Ok((mut sprite, mut animation, mut yeti)) = yeti_q.get_mut(entity_woken) else {
-            continue;
-        };
-
-        yeti.ignore_collisions.reset();
-        animation.set_frames(vec![
-            game_resources.yeti_run[0],
-            game_resources.yeti_run[1],
-            game_resources.yeti_run[0],
-            game_resources.yeti_run[2]
-        ]);
-        if let Some(rect) = animation.get_frame() {
-            sprite.rect = Some(rect);
-        }
+                ).in_schedule(OnExit(GameState::GameOver)));
     }
 }
 
