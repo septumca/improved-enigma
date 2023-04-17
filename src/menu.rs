@@ -122,16 +122,11 @@ fn get_button_color(toggle: bool) -> BackgroundColor {
 }
 
 fn setup(
-    window: Query<&Window>,
     mut commands: Commands,
     game_resources: Res<GameResources>,
     music_resource: Res<MusicResource>,
     control_scheme: Res<ControlScheme>,
 ) {
-    let Ok(window) = window.get_single() else {
-        return;
-    };
-
     let text_style = TextStyle {
         font: game_resources.font_handle.clone(),
         font_size: 24.0,
@@ -144,8 +139,8 @@ fn setup(
             NodeBundle {
                 style: Style {
                     size: Size {
-                        width: Val::Px(window.width()),
-                        height: Val::Px(window.height()),
+                        width: Val::Percent(100.0),
+                        height: Val::Percent(100.0),
                     },
                     flex_direction: FlexDirection::Column,
                     align_items: AlignItems::Center,

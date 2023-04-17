@@ -29,6 +29,7 @@ const ROTATION_HINDERANCE_SLOPE: f32 = 15.0;
 
 fn get_graphics_index(rotation: f32) -> Option<usize> {
     let angle = rotation.abs();
+
     if angle <= SPRITE_ROTATION_TRESHOLD {
         return None;
     }
@@ -351,6 +352,7 @@ fn gameover_detection(
 pub fn setup(
     mut commands: Commands,
     game_resources: Res<GameResources>,
+    mut camera_q: Query<&mut Transform, With<Camera>>,
 ) {
     let text_style = TextStyle {
         font: game_resources.font_handle.clone(),
@@ -358,6 +360,12 @@ pub fn setup(
         color: Color::BLACK,
     };
     let text_alignment = TextAlignment::Right;
+
+    let Ok(mut camera_transform) = camera_q.get_single_mut() else {
+        return;
+    };
+    camera_transform.translation.x = 0.0;
+    camera_transform.translation.y = -PLAYER_CAMERA_OFFSET;
 
     commands.spawn((
         SpriteBundle {

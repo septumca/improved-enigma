@@ -1,7 +1,7 @@
 use bevy::{prelude::*, math::vec2};
 use rand::{Rng, seq::SliceRandom};
 
-use crate::{GameState, GameResources, obstacle::{ObstacleType, TREE_COLLIDABLE_DIMENSIONS, TREE_COLLIDABLE_OFFSETS, STONE_COLLIDABLE_DIMENSIONS, STONE_COLLIDABLE_OFFSETS, Obstacle}, player::PLAYER_Z_INDEX, collidable::Collidable, Alive, debug::DebugMarker, finish::Finish, posts::{PostsSpawner, PostColor, POST_DISTANCE, HIT_DETECTION_OFFSET, Posts}};
+use crate::{GameState, GameResources, obstacle::{ObstacleType, TREE_COLLIDABLE_DIMENSIONS, TREE_COLLIDABLE_OFFSETS, STONE_COLLIDABLE_DIMENSIONS, STONE_COLLIDABLE_OFFSETS, Obstacle}, player::{self, PLAYER_Z_INDEX}, collidable::Collidable, Alive, debug::DebugMarker, finish::Finish, posts::{PostsSpawner, PostColor, POST_DISTANCE, HIT_DETECTION_OFFSET, Posts}};
 
 #[derive(Resource)]
 pub struct LevelGeneratorSettings {
@@ -19,7 +19,7 @@ pub struct LevelGeneratorPlugin;
 impl Plugin for LevelGeneratorPlugin {
     fn build(&self, app: &mut App) {
         app
-            .add_system(generate.in_schedule(OnEnter(GameState::Playing)));
+            .add_system(generate.after(player::setup).in_schedule(OnEnter(GameState::Playing)));
     }
 }
 
